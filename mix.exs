@@ -29,6 +29,6 @@ defmodule SentinelCore.Mixfile do
   #
   # Type "mix help deps" for more examples and options
   defp deps do
-    []
+    [{:distillery, "~> 1.1"}]
   end
 end
