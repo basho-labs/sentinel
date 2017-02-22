@@ -27,6 +27,9 @@ defmodule SentinelCore.Switchboard do
                                           :peer_clients => peer_clients} = state) do
     Logger.debug "subscribe to brokers on: #{inspect peers}"
 
+    # Disconnect from all clients to clean up
+    for cl <- peer_clients, do: :emqttc.disconnect(cl)
+    # Connect to new peers again
     clients = for host <- peers, do: connect(hostname, host)
     Logger.debug "clients: #{inspect clients}"
 
@@ -58,7 +61,7 @@ defmodule SentinelCore.Switchboard do
     {:noreply, state}
   end
 
-  def handle_info({:mqttc, client, :disconnected}, %{:hostname => hostname} = state) do
+  def handle_info({:mqttc, client, :disconnected}, %{:hostname => _hostname} = state) do
     Logger.info "disconnected: #{inspect client}"
     {:noreply, state}
   end  
@@ -88,6 +91,7 @@ defmodule SentinelCore.Switchboard do
       {:port, String.to_integer(port)}, 
       {:client_id, myself},
       {:reconnect, {1, 120}},
+      {:keepalive, 0},
       :auto_resub
     ])
     Process.monitor remote_client
