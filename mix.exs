@@ -29,6 +29,9 @@ defmodule SentinelCore.Mixfile do
   #
   # Type "mix help deps" for more examples and options
   defp deps do
-    [{:distillery, "~> 1.1"}]
+    [
+      {:distillery, "~> 1.1"},
+      {:emqttc, git: "https://github.com/emqtt/emqttc.git", branch: "master"}
+    ]
   end
 end

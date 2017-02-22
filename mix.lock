@@ -1,1 +1,5 @@
-%{"distillery": {:hex, :distillery, "1.1.2", "4cf32ecc70ca7eecca9e52e111edf320bd78011050825863cd8bc7ffee686c5d", [:mix], []}}
+%{"distillery": {:hex, :distillery, "1.1.2", "4cf32ecc70ca7eecca9e52e111edf320bd78011050825863cd8bc7ffee686c5d", [:mix], []},
+  "emqttc": {:git, "https://github.com/emqtt/emqttc.git", "d4cbc38808fec0bda30be245268e876283c0e49f", [branch: "master"]},
+  "gen_logger": {:git, "https://github.com/emqtt/gen_logger.git", "f6e9f2f373d99f41ffe0579ab5a5f3b19472c9c5", [branch: "master"]},
+  "goldrush": {:git, "https://github.com/basho/goldrush.git", "8f1b715d36b650ec1e1f5612c00e28af6ab0de82", [tag: "0.1.9"]},
+  "lager": {:git, "https://github.com/basho/lager.git", "81eaef0ce98fdbf64ab95665e3bc2ec4b24c7dac", [branch: "master"]}}

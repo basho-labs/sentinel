@@ -11,7 +11,7 @@ defmodule SentinelCore.Application do
     # Define workers and child supervisors to be supervised
     children = [
       # Starts a worker by calling: SentinelCore.Worker.start_link(arg1, arg2, arg3)
-      # worker(SentinelCore.Worker, [arg1, arg2, arg3]),
+      worker(SentinelCore.Switchboard, [], name: SentinelCore.Switchboard)
     ]
 
     # See http://elixir-lang.org/docs/stable/elixir/Supervisor.html
