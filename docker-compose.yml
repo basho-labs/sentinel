@@ -1,0 +1,30 @@
+version: '2'
+
+services:
+  gateway:
+    build: .
+    image: sentinel
+    ports: 
+      - 1883
+    networks:
+      - net-a
+    tty: true
+
+  device_a:
+    build: .
+    image: sentinel
+    ports: 
+      - 1883
+    networks:
+      - net-a
+    environment:
+      - SENTINEL_GATEWAY=sentinel_gateway_1
+    tty: true
+
+networks:
+  net-a:
+    driver: bridge
+    ipam:
+      driver: default
+      config:
+      - subnet: 10.1.1.0/24

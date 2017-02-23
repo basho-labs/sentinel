@@ -16,11 +16,14 @@ COPY . /usr/src/sentinel_core
 WORKDIR /usr/src/sentinel_core
 
 RUN mix local.hex --force
+RUN mix local.rebar --force
 RUN mix deps.get
 RUN MIX_ENV=prod mix release
 
 RUN cp -R _build/prod/rel/sentinel_core /opt/sentinel
 RUN rm -rf /var/lib/apt/lists/* /tmp/* /usr/src/*
+
+EXPOSE 1883
 
 COPY start.sh /opt/sentinel/start.sh
 WORKDIR /opt/sentinel
