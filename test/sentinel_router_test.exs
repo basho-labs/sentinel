@@ -36,5 +36,17 @@ defmodule SentinelRouterTest do
       assert 0 == size(network)
     end
   end
-  
+
+  test "Can add multiple peers to the %Network{}" do
+    ptest peers: list(of: string(), min: 1) do
+      # Remove duplicate peers (easier than trying to write a generator
+      # that never generates duplicates)
+      peers = Enum.uniq(peers)
+      network = new(peers)
+      assert length(peers) == size(network)
+      [p0 |_] = peers
+      network = remove(network, p0)
+      assert length(peers) - 1 == size(network)
+    end
+  end
 end
