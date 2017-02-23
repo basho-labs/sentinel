@@ -49,4 +49,17 @@ defmodule SentinelRouterTest do
       assert length(peers) - 1 == size(network)
     end
   end
+
+  test "We can detect a peer once added to the %Network{}" do
+    ptest peers: list(of: string(), min: 1) do
+      peers = Enum.uniq(peers)
+      network = new()
+      assert false == peer?(network, hd(peers))
+      network = new(peers)
+      assert true == peer?(network, hd(peers))
+      network = remove(network, hd(peers))
+      assert false == peer?(network, hd(peers))
+    end
+  end
+
 end

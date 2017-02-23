@@ -44,6 +44,13 @@ defmodule SentinelRouter do
     end
 
     @doc """
+    Test if a given peer exists in the known network.
+    """
+    def peer?(%Network{peers: prs}, peer) do
+      MapSet.member?(prs, peer)
+    end
+
+    @doc """
     Forget a peer.
     """
     def remove(%Network{peers: prs}, peer) do
