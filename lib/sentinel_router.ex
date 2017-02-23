@@ -25,5 +25,12 @@ defmodule SentinelRouter do
     def num_peers(%Network{peers: prs}) do
       length(prs)
     end
+
+    @doc """
+    Add a new peer to our known peers.
+    """
+    def add(%Network{peers: prs}, peer) do
+      %Network{peers: [ peer | prs ]}
+    end
   end
 end
