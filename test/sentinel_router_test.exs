@@ -6,15 +6,15 @@ defmodule SentinelRouterTest do
   import SentinelRouter.Network
 
   test "A new %Network{} has 0 peers" do
-    assert 0 == num_peers(new())
+    assert 0 == size(new())
   end
 
   test "A new %Network{} can be grown by adding a peer" do
     ptest peer: string() do
       new_network = new()
-      assert 0 == num_peers(new_network)
+      assert 0 == size(new_network)
       full_nwk = add(new_network, peer)
-      assert 1 == num_peers(full_nwk)
+      assert 1 == size(full_nwk)
     end
   end
 
@@ -23,7 +23,7 @@ defmodule SentinelRouterTest do
       network = new()
       network = add(network, peer)
       network = add(network, peer)
-      assert 1 == num_peers(network)
+      assert 1 == size(network)
     end
   end
   

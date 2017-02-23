@@ -13,16 +13,24 @@ defmodule SentinelRouter do
     """
     defstruct :peers
 
+    @doc """
+    Create a new %Network{}, possibly seeded with a list of peers.
+    """
     def new(peer_hosts \\ []) do
       %Network{ peers: MapSet.new(peer_hosts) }
     end
     
-    # TODO: Use a set or something, prevent dupes
+    @doc """
+    Get the (sorted) list of all known peers
+    """
     def peers(%Network{peers: prs}) do
-      MapSet.to_list(prs)
+      MapSet.to_list(prs) |> Enum.sort
     end
 
-    def num_peers(%Network{peers: prs}) do
+    @doc """
+    Get the size of our known network.
+    """
+    def size(%Network{peers: prs}) do
       MapSet.size(prs)
     end
 
