@@ -37,20 +37,10 @@ defmodule SentinelCore.Switchboard do
                                       :hostname => hostname,
                                       :gateway  => gateway} = state) do
     # Send message to the gateway
-    Agent.start fn ->
-      mqttc = connect(hostname, gateway)
-      receive do
-        # Once connected, send the message
-        {:mqttc, cl, :connected} ->
-          :emqttc.publish(cl, "swarm/join", hostname)
-          # Disconnect after publishing
-          :emqttc.disconnect(mqttc)
-        msg ->
-          Logger.debug "got #{inspect msg} from join agent"
-      end
-    end
+    gateway_client = connect(hostname, gateway)
+    :emqttc.publish(gateway_client, "swarm/join", hostname)
 
-    {:noreply, state}
+    {:noreply, %{state | peer_clients: [gateway_client]}}
   end
 
   def handle_info(:connect_local_peers, %{:client       => _client, 
@@ -133,6 +123,11 @@ defmodule SentinelCore.Switchboard do
     topic = "node/" <> hostname
     Logger.info "subscribing to #{topic} with #{inspect client}"
     :emqttc.subscribe(client, topic, :qos1)
+    {:noreply, state}
+  end  
+
+  def handle_info(msg, state) do
+    Logger.warn "unexpected message: #{inspect msg}"
     {:noreply, state}
   end  
   

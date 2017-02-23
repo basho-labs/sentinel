@@ -8,6 +8,7 @@ services:
       - 1883
     networks:
       - net-a
+      - net-b
     tty: true
 
   device_a:
@@ -21,6 +22,17 @@ services:
       - SENTINEL_GATEWAY=sentinel_gateway_1
     tty: true
 
+  device_b:
+    build: .
+    image: sentinel
+    ports: 
+      - 1883
+    networks:
+      - net-b
+    environment:
+      - SENTINEL_GATEWAY=sentinel_gateway_1
+    tty: true
+
 networks:
   net-a:
     driver: bridge
@@ -28,3 +40,9 @@ networks:
       driver: default
       config:
       - subnet: 10.1.1.0/24
+  net-b:
+    driver: bridge
+    ipam:
+      driver: default
+      config:
+      - subnet: 10.1.2.0/24
