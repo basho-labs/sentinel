@@ -11,7 +11,7 @@ defmodule SentinelRouter do
     @doc """
     peers: a list of hostnames of machines in our immediate vicinity.
     """
-    defstruct :peers
+    defstruct [:peers]
 
     @doc """
     Create a new %Network{}, possibly seeded with a list of peers.
@@ -29,6 +29,8 @@ defmodule SentinelRouter do
 
     @doc """
     Get the size of our known network.
+    TODO I feel like there's a protocol we should use here, to make our %Network{}
+    size-able - maybe Enumerable? It probably just delegates to %MapSet{} for now?
     """
     def size(%Network{peers: prs}) do
       MapSet.size(prs)
@@ -39,6 +41,13 @@ defmodule SentinelRouter do
     """
     def add(%Network{peers: prs}, peer) do
       %Network{peers: MapSet.put(prs, peer)}
+    end
+
+    @doc """
+    Forget a peer.
+    """
+    def remove(%Network{peers: prs}, peer) do
+      %Network{peers: MapSet.delete(prs, peer)}
     end
   end
 end

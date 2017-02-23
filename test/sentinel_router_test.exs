@@ -26,5 +26,15 @@ defmodule SentinelRouterTest do
       assert 1 == size(network)
     end
   end
+
+  test "Can remove a peer from the %Network{}" do
+    ptest peer: string() do
+      network = new()
+      network = add(network, peer)
+      assert 1 == size(network)
+      network = remove(network, peer)
+      assert 0 == size(network)
+    end
+  end
   
 end
