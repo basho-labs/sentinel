@@ -69,7 +69,7 @@ defmodule SentinelCore.Switchboard do
 
     # Find which peers we don't have clients for
     already_connected = MapSet.new(Map.keys(peer_clients))
-    Logger.debug "already connected: #{inspect peer_clients}"
+    Logger.debug "already connected: #{inspect already_connected}"
     local_peers = MapSet.new(Network.peers(Map.get(networks, net_name)))
     not_connected = MapSet.difference(local_peers, already_connected)
     Logger.debug "not connected: #{inspect not_connected}"
@@ -100,7 +100,7 @@ defmodule SentinelCore.Switchboard do
   """
   def handle_info({:publish, "swarm/join/" <> net_name, peer}, %{:networks => networks} = state) do
     Logger.debug "joining node #{peer} with #{inspect networks}"
-    networks = Map.update(networks, net_name, Network.new, fn n ->
+    networks = Map.update(networks, net_name, Network.new([peer]), fn n ->
       Network.add(n, peer)
     end)
     Logger.debug "networks: #{inspect networks}"
