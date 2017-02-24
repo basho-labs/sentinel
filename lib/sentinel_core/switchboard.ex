@@ -1,11 +1,13 @@
 defmodule SentinelCore.Switchboard do
   use GenServer
   require Logger
+
+  alias SentinelRouter.Network
   
   def start_link do
     state = %{
       hostname: hostname(), 
-      peers: MapSet.new, 
+      network: Network.new(),
       peer_clients: [],
       gateway: nil,
       client: nil
@@ -45,14 +47,14 @@ defmodule SentinelCore.Switchboard do
 
   def handle_info(:connect_local_peers, %{:client       => _client, 
                                           :hostname     => hostname,
-                                          :peers        => peers,
+                                          :network      => network,
                                           :peer_clients => peer_clients} = state) do
-    Logger.debug "subscribe to brokers on: #{inspect peers}"
+    Logger.debug "subscribe to brokers on: #{inspect network}"
 
     # Disconnect from all clients to clean up
     for {_peer, peer_client} <- peer_clients, do: :emqttc.disconnect(peer_client)
     # Connect to new peers again
-    clients = for host <- peers, do: {host, connect(hostname, host)}
+    clients = for host <- Network.peers(network), do: {host, connect(hostname, host)}
     Logger.debug "clients: #{inspect clients}"
 
     {:noreply, %{state | peer_clients: clients}}
@@ -60,22 +62,22 @@ defmodule SentinelCore.Switchboard do
 
   def handle_info(:gossip_peers, %{:client        => _client,
                                    :gateway       => gateway,
-                                   :peers         => peers,
+                                   :network       => network,
                                    :peer_clients  => peer_clients} = state) do
     # Gossip peers to everyone I know
-    msg = :erlang.term_to_binary({gateway, peers})
+    msg = :erlang.term_to_binary({gateway, Network.peers(network)})
     for {_peer, peer_client} <- peer_clients, do: :emqttc.publish(peer_client, "swarm/update", msg)
 
     {:noreply, state}
   end
 
-  def handle_info({:publish, "swarm/join", msg}, %{:client    => _client, 
+  def handle_info({:publish, "swarm/join", peer}, %{:client    => _client, 
                                                    :hostname  => _hostname,
-                                                   :peers     => peers} = state) do
-    Logger.info "joining node #{msg} with #{inspect peers}"
+                                                   :network   => network} = state) do
+    Logger.info "joining node #{peer} with #{inspect network}"
     send self(), :connect_local_peers
 
-    {:noreply, %{state | peers: MapSet.put(peers, msg)}}
+    {:noreply, %{state | network: Network.add(network, peer)}}
   end
 
   @doc """
@@ -83,22 +85,22 @@ defmodule SentinelCore.Switchboard do
   """
   def handle_info({:publish, "swarm/update", msg}, %{:client  => _client,
                                                      :gateway => gateway,
-                                                     :peers   => peers} = state) do
+                                                     :network => network} = state) do
     Logger.info "swarm/update: #{inspect msg}"
-    Logger.info "swarm/update: #{inspect peers}"
+    Logger.info "swarm/update: #{inspect network}"
     {new_gateway, new_peers} = :erlang.binary_to_term(msg)
-    new_state = Map.put(state, :peers, case update_peers(new_peers, peers) do
-      :no_change -> 
-        peers
-      {:ok, merged_peers} -> 
-        send self(), :connect_local_peers
-        send self(), :gossip_peers
-        merged_peers
-    end)
-    new_state = case gateway do
-      nil -> Map.put(new_state, :gateway, new_gateway)
-      _gw -> new_state
-    end
+    new_state = ensure_gateway(state, new_gateway)
+	network = case Network.update_peers(network, new_peers) do
+		  :no_change -> 
+			network
+		  {:changed, network} -> 
+		  # NB: No ^pin - reassigned 'network'
+			send self(), :connect_local_peers
+			send self(), :gossip_peers
+			network
+		end
+    new_state = Map.put(new_state, :network, network)
+    Logger.debug "my_mesh hash: " <> Base.encode16(Network.hash(network))
     {:noreply, new_state}
   end
 
@@ -139,6 +141,13 @@ defmodule SentinelCore.Switchboard do
     System.get_env("SENTINEL_GATEWAY")
   end
 
+  defp ensure_gateway(%{:gateway => nil} = state, gway) do
+    %{state | gateway: gway}
+  end
+  defp ensure_gateway(%{:gateway => _} = state, _) do
+    state
+  end
+
   defp connect(myself, host) do
     do_connect(myself, String.split(host, ":"))
   end
@@ -161,32 +170,4 @@ defmodule SentinelCore.Switchboard do
     Logger.debug "connected to: #{inspect remote_client}"
     remote_client
   end
-  
-  defp update_peers(new_peers, peers) do
-    before_hash = hash_peers(peers)
-    merged_peers = MapSet.union(new_peers, peers)
-    after_hash = hash_peers(merged_peers)
-    Logger.debug "my_mesh hash: " <> Base.encode16(after_hash)
-    case before_hash != after_hash do
-      false   -> :no_change
-      true    -> {:ok, merged_peers}
-    end
-  end
-
-  defp hash_peers(peers) do
-    hash(peers |> MapSet.to_list |> Enum.sort)
-  end
-  
-  def hash(items) do
-    hash(items, [])
-  end
-
-  def hash([], hash) do
-    hash
-  end
-
-  def hash([first | rest], hash) do
-    hash(rest, :crypto.hash(:sha256, [hash, first]))
-  end
-  
 end
