@@ -126,7 +126,7 @@ defmodule SentinelCore.Switchboard do
           Logger.debug "no change: #{inspect new_peers} vs #{Network.peers(n)}"
           n
         {:changed, network} ->
-          Logger.debug "changed: #{network}"
+          Logger.debug "changed: #{inspect network}"
           # NB: No ^pin - reassigned 'network'
           send self(), {:connect_local_peers, net_name}
           send self(), {:gossip_peers, net_name}
