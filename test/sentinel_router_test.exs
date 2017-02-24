@@ -62,4 +62,20 @@ defmodule SentinelRouterTest do
     end
   end
 
+  test "updating with a known peer tells us :no_change" do
+    ptest peer: string() do
+      network = new([peer])
+      assert :no_change = update_peers(network, [peer])
+    end
+  end
+
+  test "updating with a new peer tells us :changed"  do
+    ptest peer: string() do
+      network = new()
+      assert {:changed, newnetwk} = update_peers(network, [peer])
+      assert 1 == size(newnetwk)
+      assert :no_change = update_peers(newnetwk, [peer])
+    end
+  end
+
 end
