@@ -28,7 +28,8 @@ defmodule SentinelCore.Switchboard do
     # Always connect to the local broker
     mqttc = connect(hostname, "localhost")
     # Subscribe to swarm control messages
-    :emqttc.subscribe(mqttc, "swarm/+", :qos0)
+    :emqttc.subscribe(mqttc, "swarm/#", :qos0)
+    :emqttc.subscribe(mqttc, "node/#", :qos1)
 
     # If there was a gateway value set in the ENV, send a message to join the swarm
     state = case default_gateway() do
@@ -47,25 +48,24 @@ defmodule SentinelCore.Switchboard do
   @doc """
   Join this node to the gateway node to "bootstrap" the swarm.
   """
-  def handle_info(:join_to_gateway, %{:client   => _client,
-                                      :hostname => hostname,
-                                      :gateway  => gateway} = state) do
+  def handle_info(:join_to_gateway, %{:hostname     => hostname,
+                                      :gateway      => gateway,
+                                      :peer_clients => peer_clients} = state) do
     # Send message to the gateway
     gateway_client = connect(hostname, gateway)
     net_name = default_network()
     :emqttc.publish(gateway_client, "swarm/join/" <> net_name, hostname)
 
-    {:noreply, %{state | peer_clients: [gateway_client]}}
+    {:noreply, %{state | peer_clients: Map.put(peer_clients, gateway, gateway_client)}}
   end
 
   @doc """
   Connect to all known peers by creating subscribers for myself on their brokers.
   """
-  def handle_info({:connect_local_peers, net_name}, %{:client       => _client,
-                                                      :hostname     => hostname,
+  def handle_info({:connect_local_peers, net_name}, %{:hostname     => hostname,
                                                       :networks     => networks,
                                                       :peer_clients => peer_clients} = state) do
-    Logger.debug "subscribe to brokers on: #{inspect networks}"
+    Logger.info "subscribe to brokers on: #{inspect networks}"
 
     # Find which peers we don't have clients for
     already_connected = MapSet.new(Map.keys(peer_clients))
@@ -75,89 +75,110 @@ defmodule SentinelCore.Switchboard do
     Logger.debug "not connected: #{inspect not_connected}"
 
     # Connect to new peers
-    peer_clients = for host <- not_connected, do: Map.put(peer_clients, host, connect(hostname, host))
-    Logger.debug "clients: #{inspect peer_clients}"
+    clients = for host <- not_connected, do: {host, connect(hostname, host)}
+    Logger.debug "clients: #{inspect clients}"
 
-    {:noreply, %{state | peer_clients: peer_clients}}
+    {:noreply, %{state | peer_clients: Map.merge(peer_clients, Map.new(clients))}}
   end
 
-  def handle_info({:gossip_peers, net_name}, %{:client        => _client,
-                                               :gateway       => gateway,
-                                               :networks      => networks,
-                                               :peer_clients  => peer_clients} = state) do
+  @doc """
+  Send the list of peers around to other nodes I know about to converge the cluster view.
+  """
+  def handle_info({:gossip_peers, net_name}, %{:gateway      => gateway,
+                                               :networks     => networks,
+                                               :peer_clients => peer_clients} = state) do
     # Gossip peers to everyone I know
     peers = Network.peers(Map.get(networks, net_name))
-    msg = :erlang.term_to_binary({gateway, net_name, peers})
-    for {_peer, peer_client} <- peer_clients, do: :emqttc.publish(peer_client, "swarm/update/" <> net_name, msg)
+    msg = :erlang.term_to_binary({gateway, peers})
+    for {_peer, cl} <- peer_clients, do: :emqttc.publish(cl, "swarm/update/" <> net_name, msg)
 
     {:noreply, state}
   end
 
-  def handle_info({:publish, "swarm/join/" <> net_name, peer}, %{:client   => _client,
-                                                                 :hostname => _hostname,
-                                                                 :networks => networks} = state) do
-    Logger.info "joining node #{peer} with #{inspect networks}"
-    network = case Map.has_key?(networks, net_name) do
-      true -> Map.get(networks, net_name)
-      false -> Network.new
-    end
+  @doc """
+  Join the node to the named network and immediately try and connect to it.
+  """
+  def handle_info({:publish, "swarm/join/" <> net_name, peer}, %{:networks => networks} = state) do
+    Logger.debug "joining node #{peer} with #{inspect networks}"
+    networks = Map.update(networks, net_name, Network.new, fn n ->
+      Network.add(n, peer)
+    end)
+    Logger.debug "networks: #{inspect networks}"
 
     send self(), {:connect_local_peers, net_name}
+    send self(), {:gossip_peers, net_name}
 
-    {:noreply, %{state | networks: Map.put(networks, net_name, Network.add(network, peer))}}
+    {:noreply, %{state | networks: networks}}
   end
 
   @doc """
   Update the overlay mesh.
   """
-  def handle_info({:publish, "swarm/update/" <> net_name, msg}, %{:client   => _client,
-                                                                  :gateway  => _gateway,
-                                                                  :networks => networks} = state) do
-    network = Map.get(networks, net_name)
-
-    Logger.info "swarm/update: #{inspect msg}"
-    Logger.info "swarm/update: #{inspect network}"
-    {new_gateway, net_name, new_peers} = :erlang.binary_to_term(msg)
+  def handle_info({:publish, "swarm/update/" <> net_name, msg}, %{:networks => networks} = state) do
+    {new_gateway, new_peers} = :erlang.binary_to_term(msg)
     state = ensure_gateway(state, new_gateway)
-    network = case Network.update_peers(network, new_peers) do
-      :no_change ->
-        Logger.debug "no change: #{inspect new_peers} vs #{Network.peers(network)}"
-        network
-      {:changed, network} ->
-        Logger.debug "changed: #{network}"
-        # NB: No ^pin - reassigned 'network'
-        send self(), {:connect_local_peers, net_name}
-        send self(), {:gossip_peers, net_name}
-        network
-    end
-    networks = Map.put(networks, net_name, network)
+
+    networks = Map.update(networks, net_name, Network.new, fn n ->
+      Logger.info "swarm/update: #{inspect msg}"
+      Logger.info "swarm/update: #{inspect n}"
+      case Network.update_peers(n, new_peers) do
+        :no_change ->
+          Logger.debug "no change: #{inspect new_peers} vs #{Network.peers(n)}"
+          n
+        {:changed, network} ->
+          Logger.debug "changed: #{network}"
+          # NB: No ^pin - reassigned 'network'
+          send self(), {:connect_local_peers, net_name}
+          send self(), {:gossip_peers, net_name}
+          network
+      end
+    end)
+    
     {:noreply, %{state | networks: networks}}
   end
 
-  def handle_info({:publish, "node/" <> host, msg}, %{:client   => _client,
-                                                      :hostname => hostname} = state) when host == hostname do
+  @doc """
+  Handle a message addressed to me.
+  """
+  def handle_info({:publish, "node/" <> host, msg}, %{:hostname => hostname} = state) when host == hostname do
     Logger.info "msg to me: #{inspect msg}"
     {:noreply, state}
   end
 
-  def handle_info({:publish, "node/" <> host, msg}, %{:client   => _client,
-                                                      :gateway  => gateway,
-                                                      :hostname => hostname} = state) when hostname != gateway do
-    Logger.info "msg to #{host}: #{inspect msg}"
+  @doc """
+  Handle a message not intended for me. 
+  
+  TODO: Whether the message is really handled or not depends on whether I'm a replica for this node.
+  """
+  def handle_info({:publish, "node/" <> host = topic, msg}, %{:gateway      => gateway,
+                                                              :peer_clients => peer_clients} = state) when nil != gateway do
+    case Map.has_key?(peer_clients, host) do
+      true ->
+        # TODO: Decide whether to handle as a replica
+        :pass
+      false ->
+        Logger.info "forwarding message for #{host} to gateway #{gateway}"
+        client = Map.get(peer_clients, gateway)
+        :emqttc.publish(client, topic, msg)
+    end
+
     {:noreply, state}
   end
 
-  def handle_info({:publish, topic, msg}, %{:client => _client} = state) do
-    Logger.debug "topic: " <> topic
-    Logger.debug "msg: #{inspect msg}"
+  def handle_info({:publish, topic, msg}, state) do
+    Logger.info "topic: " <> topic
+    Logger.info "msg: #{inspect msg}"
     {:noreply, state}
   end
 
-  def handle_info({:mqttc, client, :disconnected}, %{:hostname => _hostname} = state) do
+  def handle_info({:mqttc, client, :disconnected}, state) do
     Logger.info "disconnected: #{inspect client}"
     {:noreply, state}
   end
 
+  @doc """
+  Subscribe to our `node/$HOSTNAME` topic on the broker we just connected to.
+  """
   def handle_info({:mqttc, client, :connected}, %{:hostname => hostname} = state) do
     topic = "node/" <> hostname
     Logger.debug "subscribing to #{topic} with #{inspect client}"

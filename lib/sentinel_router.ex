@@ -74,7 +74,7 @@ defmodule SentinelRouter do
     Maybe merge some more peers into our list of known peers.
     Returns an indication of whether anything changed.
     """
-    def update_peers(%Network{peers: prs, hash: before_hash}=network, new_peers) do
+    def update_peers(%Network{peers: prs, hash: before_hash}=_network, new_peers \\ []) do
       merged_peers = MapSet.union(prs, MapSet.new(new_peers))
       after_hash = hash_peers(merged_peers)
       case after_hash do

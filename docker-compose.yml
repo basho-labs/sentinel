@@ -29,6 +29,8 @@ services:
     environment:
       - SENTINEL_GATEWAY=sentinel_gateway_1
       - SENTINEL_NETWORK=net-a
+    depends_on:
+      - gateway
     tty: true
 
   device_b:
@@ -44,6 +46,8 @@ services:
     environment:
       - SENTINEL_GATEWAY=sentinel_gateway_1
       - SENTINEL_NETWORK=net-b
+    depends_on:
+      - gateway
     tty: true
 
   # test:
