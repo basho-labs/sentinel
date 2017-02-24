@@ -15,6 +15,10 @@ RUN apt-get install -y elixir
 COPY . /usr/src/sentinel_core
 WORKDIR /usr/src/sentinel_core
 
+ENV LANG en_US.UTF-8
+ENV LC_CTYPE en_US.UTF-8
+ENV ELIXIR_ERL_OPTIONS "+pc unicode"
+
 RUN mix local.hex --force
 RUN mix local.rebar --force
 RUN mix deps.get

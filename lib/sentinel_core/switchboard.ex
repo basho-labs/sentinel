@@ -72,7 +72,7 @@ defmodule SentinelCore.Switchboard do
   def handle_info({:publish, "swarm/join", msg}, %{:client    => _client, 
                                                    :hostname  => _hostname,
                                                    :peers     => peers} = state) do
-    Logger.info "joining node #{msg} with #{inspect peers}"
+    Logger.debug "joining node #{msg} with #{inspect peers}"
     send self(), :connect_local_peers
 
     {:noreply, %{state | peers: MapSet.put(peers, msg)}}
@@ -84,8 +84,8 @@ defmodule SentinelCore.Switchboard do
   def handle_info({:publish, "swarm/update", msg}, %{:client  => _client,
                                                      :gateway => gateway,
                                                      :peers   => peers} = state) do
-    Logger.info "swarm/update: #{inspect msg}"
-    Logger.info "swarm/update: #{inspect peers}"
+    Logger.debug "swarm/update: #{inspect msg}"
+    Logger.debug "swarm/update: #{inspect peers}"
     {new_gateway, new_peers} = :erlang.binary_to_term(msg)
     new_state = Map.put(state, :peers, case update_peers(new_peers, peers) do
       :no_change -> 
@@ -107,27 +107,39 @@ defmodule SentinelCore.Switchboard do
     Logger.info "msg to me: #{inspect msg}"
     {:noreply, state}
   end
+
+  def handle_info({:publish, "node/" <> host = topic, msg}, %{:client   => _client, 
+                                                      :hostname => hostname,
+                                                      :gateway  => gateway,
+                                                      :peers    => peers} = state) when hostname != gateway do
+    Logger.debug "msg NOT to me: #{inspect msg}"
+    case MapSet.member?(peers, host) do
+      false ->
+        # Forward to gateway
+        Logger.debug "forwarding to gateway: #{gateway}"
+        for {peer, cl} <- peers, peer == gateway, do: :emqttc.publish(cl, topic, msg)
+      true ->
+        # Ignore or handle as replica
+        Logger.debug "TODO: handle as a replica?"
+    end
+    {:noreply, state}
+  end
   
   def handle_info({:publish, topic, msg}, %{:client => _client} = state) do
-    Logger.info "topic: " <> topic
-    Logger.info "msg: #{inspect msg}"
+    Logger.debug "topic: " <> topic
+    Logger.debug "msg: #{inspect msg}"
     {:noreply, state}
   end
 
-  def handle_info({:mqttc, client, :disconnected}, %{:hostname => _hostname} = state) do
-    Logger.info "disconnected: #{inspect client}"
-    {:noreply, state}
-  end  
-
   def handle_info({:mqttc, client, :connected}, %{:hostname => hostname} = state) do
     topic = "node/" <> hostname
-    Logger.info "subscribing to #{topic} with #{inspect client}"
+    Logger.debug "subscribing to #{topic} with #{inspect client}"
     :emqttc.subscribe(client, topic, :qos1)
     {:noreply, state}
   end  
 
   def handle_info(msg, state) do
-    Logger.warn "unexpected message: #{inspect msg}"
+    Logger.warn "unhandled message: #{inspect msg}"
     {:noreply, state}
   end  
   

@@ -4,6 +4,9 @@ services:
   gateway:
     build: .
     image: sentinel
+    labels:
+      - "swarm=dev"
+      - "role=gateway"
     ports: 
       - 1883
     networks:
@@ -14,6 +17,9 @@ services:
   device_a:
     build: .
     image: sentinel
+    labels:
+      - "swarm=dev"
+      - "role=device"
     ports: 
       - 1883
     networks:
@@ -25,12 +31,29 @@ services:
   device_b:
     build: .
     image: sentinel
+    labels:
+      - "swarm=dev"
+      - "role=device"
     ports: 
       - 1883
     networks:
       - net-b
     environment:
       - SENTINEL_GATEWAY=sentinel_gateway_1
+    tty: true
+
+  test:
+    build: test
+    image: sentinel-test
+    networks:
+      - net-a
+      - net-b
+    depends_on:
+      - gateway
+      - device_a
+      - device_b
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
     tty: true
 
 networks:
