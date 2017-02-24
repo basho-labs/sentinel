@@ -75,10 +75,10 @@ defmodule SentinelCore.Switchboard do
     Logger.debug "not connected: #{inspect not_connected}"
 
     # Connect to new peers
-    clients = for host <- not_connected, do: Map.put(peer_clients, host, connect(hostname, host))
-    Logger.debug "clients: #{inspect clients}"
+    peer_clients = for host <- not_connected, do: Map.put(peer_clients, host, connect(hostname, host))
+    Logger.debug "clients: #{inspect peer_clients}"
 
-    {:noreply, %{state | peer_clients: clients}}
+    {:noreply, %{state | peer_clients: peer_clients}}
   end
 
   def handle_info({:gossip_peers, net_name}, %{:client        => _client,
@@ -121,8 +121,10 @@ defmodule SentinelCore.Switchboard do
     state = ensure_gateway(state, new_gateway)
     network = case Network.update_peers(network, new_peers) do
       :no_change ->
+        Logger.debug "no change: #{inspect new_peers} vs #{Network.peers(network)}"
         network
       {:changed, network} ->
+        Logger.debug "changed: #{network}"
         # NB: No ^pin - reassigned 'network'
         send self(), {:connect_local_peers, net_name}
         send self(), {:gossip_peers, net_name}
