@@ -69,8 +69,10 @@ defmodule SentinelCore.Switchboard do
 
     # Find which peers we don't have clients for
     already_connected = MapSet.new(Map.keys(peer_clients))
+    Logger.debug "already connected: #{inspect peer_clients}"
     local_peers = MapSet.new(Network.peers(Map.get(networks, net_name)))
     not_connected = MapSet.difference(local_peers, already_connected)
+    Logger.debug "not connected: #{inspect not_connected}"
 
     # Connect to new peers
     clients = for host <- not_connected, do: Map.put(peer_clients, host, connect(hostname, host))
@@ -79,12 +81,11 @@ defmodule SentinelCore.Switchboard do
     {:noreply, %{state | peer_clients: clients}}
   end
 
-  def handle_info(:gossip_peers, %{:client        => _client,
-                                   :gateway       => gateway,
-                                   :networks      => networks,
-                                   :peer_clients  => peer_clients} = state) do
+  def handle_info({:gossip_peers, net_name}, %{:client        => _client,
+                                               :gateway       => gateway,
+                                               :networks      => networks,
+                                               :peer_clients  => peer_clients} = state) do
     # Gossip peers to everyone I know
-    net_name = default_network()
     peers = Network.peers(Map.get(networks, net_name))
     msg = :erlang.term_to_binary({gateway, net_name, peers})
     for {_peer, peer_client} <- peer_clients, do: :emqttc.publish(peer_client, "swarm/update/" <> net_name, msg)
@@ -116,7 +117,7 @@ defmodule SentinelCore.Switchboard do
 
     Logger.info "swarm/update: #{inspect msg}"
     Logger.info "swarm/update: #{inspect network}"
-    {new_gateway, new_peers} = :erlang.binary_to_term(msg)
+    {new_gateway, net_name, new_peers} = :erlang.binary_to_term(msg)
     state = ensure_gateway(state, new_gateway)
     network = case Network.update_peers(network, new_peers) do
       :no_change ->
@@ -124,7 +125,7 @@ defmodule SentinelCore.Switchboard do
       {:changed, network} ->
         # NB: No ^pin - reassigned 'network'
         send self(), {:connect_local_peers, net_name}
-        send self(), :gossip_peers
+        send self(), {:gossip_peers, net_name}
         network
     end
     networks = Map.put(networks, net_name, network)
