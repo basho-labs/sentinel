@@ -12,6 +12,8 @@ services:
     networks:
       - net-a
       - net-b
+    environment:
+      - SENTINEL_NETWORK=global
     tty: true
 
   device_a:
@@ -26,6 +28,7 @@ services:
       - net-a
     environment:
       - SENTINEL_GATEWAY=sentinel_gateway_1
+      - SENTINEL_NETWORK=net-a
     tty: true
 
   device_b:
@@ -40,21 +43,22 @@ services:
       - net-b
     environment:
       - SENTINEL_GATEWAY=sentinel_gateway_1
+      - SENTINEL_NETWORK=net-b
     tty: true
 
-  test:
-    build: test
-    image: sentinel-test
-    networks:
-      - net-a
-      - net-b
-    depends_on:
-      - gateway
-      - device_a
-      - device_b
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock
-    tty: true
+  # test:
+  #   build: test
+  #   image: sentinel-test
+  #   networks:
+  #     - net-a
+  #     - net-b
+  #   depends_on:
+  #     - gateway
+  #     - device_a
+  #     - device_b
+  #   volumes:
+  #     - /var/run/docker.sock:/var/run/docker.sock
+  #   tty: true
 
 networks:
   net-a:
