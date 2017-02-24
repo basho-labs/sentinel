@@ -1,18 +1,20 @@
 defmodule SentinelCore.Switchboard do
   use GenServer
   require Logger
-  
+
+  alias SentinelRouter.Network
+
   def start_link do
     state = %{
-      hostname: hostname(), 
-      peers: MapSet.new, 
+      hostname: hostname(),
+      network: Network.new(),
       peer_clients: [],
       gateway: nil,
       client: nil
     }
     GenServer.start_link(__MODULE__, state)
   end
-  
+
   def init(%{:hostname => hostname} = state) do
     # Always connect to the local broker
     mqttc = connect(hostname, "localhost")
@@ -21,15 +23,15 @@ defmodule SentinelCore.Switchboard do
 
     # If there was a gateway value set in the ENV, send a message to join the swarm
     new_state = case default_gateway() do
-      nil -> 
+      nil ->
         state
-      gw -> 
+      gw ->
         send self(), :join_to_gateway
         %{state | gateway: gw}
     end
     # Save the local broker client in the state
     new_state = Map.put(new_state, :client, mqttc)
-  
+
     {:ok, new_state}
   end
 
@@ -43,16 +45,16 @@ defmodule SentinelCore.Switchboard do
     {:noreply, %{state | peer_clients: [gateway_client]}}
   end
 
-  def handle_info(:connect_local_peers, %{:client       => _client, 
+  def handle_info(:connect_local_peers, %{:client       => _client,
                                           :hostname     => hostname,
-                                          :peers        => peers,
+                                          :network      => network,
                                           :peer_clients => peer_clients} = state) do
-    Logger.debug "subscribe to brokers on: #{inspect peers}"
+    Logger.debug "subscribe to brokers on: #{inspect network}"
 
     # Disconnect from all clients to clean up
     for {_peer, peer_client} <- peer_clients, do: :emqttc.disconnect(peer_client)
     # Connect to new peers again
-    clients = for host <- peers, do: {host, connect(hostname, host)}
+    clients = for host <- Network.peers(network), do: {host, connect(hostname, host)}
     Logger.debug "clients: #{inspect clients}"
 
     {:noreply, %{state | peer_clients: clients}}
@@ -60,22 +62,22 @@ defmodule SentinelCore.Switchboard do
 
   def handle_info(:gossip_peers, %{:client        => _client,
                                    :gateway       => gateway,
-                                   :peers         => peers,
+                                   :network       => network,
                                    :peer_clients  => peer_clients} = state) do
     # Gossip peers to everyone I know
-    msg = :erlang.term_to_binary({gateway, peers})
+    msg = :erlang.term_to_binary({gateway, Network.peers(network)})
     for {_peer, peer_client} <- peer_clients, do: :emqttc.publish(peer_client, "swarm/update", msg)
 
     {:noreply, state}
   end
 
-  def handle_info({:publish, "swarm/join", msg}, %{:client    => _client, 
+  def handle_info({:publish, "swarm/join", peer}, %{:client    => _client,
                                                    :hostname  => _hostname,
-                                                   :peers     => peers} = state) do
-    Logger.debug "joining node #{msg} with #{inspect peers}"
+                                                   :network   => network} = state) do
+    Logger.info "joining node #{peer} with #{inspect network}"
     send self(), :connect_local_peers
 
-    {:noreply, %{state | peers: MapSet.put(peers, msg)}}
+    {:noreply, %{state | network: Network.add(network, peer)}}
   end
 
   @doc """
@@ -83,51 +85,39 @@ defmodule SentinelCore.Switchboard do
   """
   def handle_info({:publish, "swarm/update", msg}, %{:client  => _client,
                                                      :gateway => gateway,
-                                                     :peers   => peers} = state) do
-    Logger.debug "swarm/update: #{inspect msg}"
-    Logger.debug "swarm/update: #{inspect peers}"
+                                                     :network => network} = state) do
+    Logger.info "swarm/update: #{inspect msg}"
+    Logger.info "swarm/update: #{inspect network}"
     {new_gateway, new_peers} = :erlang.binary_to_term(msg)
-    new_state = Map.put(state, :peers, case update_peers(new_peers, peers) do
-      :no_change -> 
-        peers
-      {:ok, merged_peers} -> 
-        send self(), :connect_local_peers
-        send self(), :gossip_peers
-        merged_peers
-    end)
-    new_state = case gateway do
-      nil -> Map.put(new_state, :gateway, new_gateway)
-      _gw -> new_state
+    new_state = ensure_gateway(state, new_gateway)
+    network = case Network.update_peers(network, new_peers) do
+      :no_change ->
+        network
+      {:changed, network} ->
+        # NB: No ^pin - reassigned 'network'
+      send self(), :connect_local_peers
+      send self(), :gossip_peers
+      network
     end
+    new_state = Map.put(new_state, :network, network)
+    Logger.debug "my_mesh hash: " <> Base.encode16(Network.hash(network))
     {:noreply, new_state}
   end
 
-  def handle_info({:publish, "node/" <> host, msg}, %{:client   => _client, 
+  def handle_info({:publish, "node/" <> host, msg}, %{:client   => _client,
                                                       :hostname => hostname} = state) when host == hostname do
     Logger.info "msg to me: #{inspect msg}"
     {:noreply, state}
   end
 
-  def handle_info({:publish, "node/" <> host = topic, msg}, %{:client   => _client, 
-                                                      :hostname => hostname,
-                                                      :gateway  => gateway,
-                                                      :peers    => peers} = state) when hostname != gateway do
-    Logger.debug "msg NOT to me: #{inspect msg}"
-    case MapSet.member?(peers, host) do
-      false ->
-        # Forward to gateway
-        Logger.debug "forwarding to gateway: #{gateway}"
-        for {peer, cl} <- peers, peer == gateway, do: :emqttc.publish(cl, topic, msg)
-      true ->
-        # Ignore or handle as replica
-        Logger.debug "TODO: handle as a replica?"
-    end
-    {:noreply, state}
-  end
-  
   def handle_info({:publish, topic, msg}, %{:client => _client} = state) do
     Logger.debug "topic: " <> topic
     Logger.debug "msg: #{inspect msg}"
+    {:noreply, state}
+  end
+
+  def handle_info({:mqttc, client, :disconnected}, %{:hostname => _hostname} = state) do
+    Logger.info "disconnected: #{inspect client}"
     {:noreply, state}
   end
 
@@ -136,19 +126,26 @@ defmodule SentinelCore.Switchboard do
     Logger.debug "subscribing to #{topic} with #{inspect client}"
     :emqttc.subscribe(client, topic, :qos1)
     {:noreply, state}
-  end  
+  end
 
   def handle_info(msg, state) do
     Logger.warn "unhandled message: #{inspect msg}"
     {:noreply, state}
-  end  
-  
+  end
+
   defp hostname do
     System.get_env("HOSTNAME")
   end
 
   defp default_gateway do
     System.get_env("SENTINEL_GATEWAY")
+  end
+
+  defp ensure_gateway(%{:gateway => nil} = state, gway) do
+    %{state | gateway: gway}
+  end
+  defp ensure_gateway(%{:gateway => _} = state, _) do
+    state
   end
 
   defp connect(myself, host) do
@@ -161,8 +158,8 @@ defmodule SentinelCore.Switchboard do
 
   defp do_connect(myself, [host, port]) do
     {:ok, remote_client} = :emqttc.start_link([
-      {:host, String.to_charlist(host)}, 
-      {:port, String.to_integer(port)}, 
+      {:host, String.to_charlist(host)},
+      {:port, String.to_integer(port)},
       {:client_id, myself},
       {:reconnect, {1, 120}},
       {:keepalive, 0},
@@ -172,33 +169,6 @@ defmodule SentinelCore.Switchboard do
 
     Logger.debug "connected to: #{inspect remote_client}"
     remote_client
-  end
-  
-  defp update_peers(new_peers, peers) do
-    before_hash = hash_peers(peers)
-    merged_peers = MapSet.union(new_peers, peers)
-    after_hash = hash_peers(merged_peers)
-    Logger.debug "my_mesh hash: " <> Base.encode16(after_hash)
-    case before_hash != after_hash do
-      false   -> :no_change
-      true    -> {:ok, merged_peers}
-    end
-  end
-
-  defp hash_peers(peers) do
-    hash(peers |> MapSet.to_list |> Enum.sort)
-  end
-  
-  def hash(items) do
-    hash(items, [])
-  end
-
-  def hash([], hash) do
-    hash
-  end
-
-  def hash([first | rest], hash) do
-    hash(rest, :crypto.hash(:sha256, [hash, first]))
   end
   
 end

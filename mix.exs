@@ -15,7 +15,7 @@ defmodule SentinelCore.Mixfile do
   # Type "mix help compile.app" for more information
   def application do
     # Specify extra applications you'll use from Erlang/Elixir
-    [extra_applications: [:logger],
+    [extra_applications: [:crypto, :logger],
      mod: {SentinelCore.Application, []}]
   end
 
@@ -30,6 +30,7 @@ defmodule SentinelCore.Mixfile do
   # Type "mix help deps" for more examples and options
   defp deps do
     [
+      {:quixir, "~> 0.9", only: :test},
       {:distillery, "~> 1.1"},
       {:emqttc, git: "https://github.com/emqtt/emqttc.git", branch: "master"}
     ]
