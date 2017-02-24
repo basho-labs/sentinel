@@ -3,10 +3,10 @@ defmodule SentinelCore.Switchboard do
   require Logger
 
   alias SentinelRouter.Network
-  
+
   def start_link do
     state = %{
-      hostname: hostname(), 
+      hostname: hostname(),
       network: Network.new(),
       peer_clients: [],
       gateway: nil,
@@ -14,7 +14,7 @@ defmodule SentinelCore.Switchboard do
     }
     GenServer.start_link(__MODULE__, state)
   end
-  
+
   def init(%{:hostname => hostname} = state) do
     # Always connect to the local broker
     mqttc = connect(hostname, "localhost")
@@ -23,15 +23,15 @@ defmodule SentinelCore.Switchboard do
 
     # If there was a gateway value set in the ENV, send a message to join the swarm
     new_state = case default_gateway() do
-      nil -> 
+      nil ->
         state
-      gw -> 
+      gw ->
         send self(), :join_to_gateway
         %{state | gateway: gw}
     end
     # Save the local broker client in the state
     new_state = Map.put(new_state, :client, mqttc)
-  
+
     {:ok, new_state}
   end
 
@@ -45,7 +45,7 @@ defmodule SentinelCore.Switchboard do
     {:noreply, %{state | peer_clients: [gateway_client]}}
   end
 
-  def handle_info(:connect_local_peers, %{:client       => _client, 
+  def handle_info(:connect_local_peers, %{:client       => _client,
                                           :hostname     => hostname,
                                           :network      => network,
                                           :peer_clients => peer_clients} = state) do
@@ -71,7 +71,7 @@ defmodule SentinelCore.Switchboard do
     {:noreply, state}
   end
 
-  def handle_info({:publish, "swarm/join", peer}, %{:client    => _client, 
+  def handle_info({:publish, "swarm/join", peer}, %{:client    => _client,
                                                    :hostname  => _hostname,
                                                    :network   => network} = state) do
     Logger.info "joining node #{peer} with #{inspect network}"
@@ -90,26 +90,26 @@ defmodule SentinelCore.Switchboard do
     Logger.info "swarm/update: #{inspect network}"
     {new_gateway, new_peers} = :erlang.binary_to_term(msg)
     new_state = ensure_gateway(state, new_gateway)
-	network = case Network.update_peers(network, new_peers) do
-		  :no_change -> 
-			network
-		  {:changed, network} -> 
-		  # NB: No ^pin - reassigned 'network'
-			send self(), :connect_local_peers
-			send self(), :gossip_peers
-			network
-		end
+    network = case Network.update_peers(network, new_peers) do
+      :no_change ->
+        network
+      {:changed, network} ->
+        # NB: No ^pin - reassigned 'network'
+      send self(), :connect_local_peers
+      send self(), :gossip_peers
+      network
+    end
     new_state = Map.put(new_state, :network, network)
     Logger.debug "my_mesh hash: " <> Base.encode16(Network.hash(network))
     {:noreply, new_state}
   end
 
-  def handle_info({:publish, "node/" <> host, msg}, %{:client   => _client, 
+  def handle_info({:publish, "node/" <> host, msg}, %{:client   => _client,
                                                       :hostname => hostname} = state) when host == hostname do
     Logger.info "msg to me: #{inspect msg}"
     {:noreply, state}
   end
-  
+
   def handle_info({:publish, topic, msg}, %{:client => _client} = state) do
     Logger.info "topic: " <> topic
     Logger.info "msg: #{inspect msg}"
@@ -119,20 +119,20 @@ defmodule SentinelCore.Switchboard do
   def handle_info({:mqttc, client, :disconnected}, %{:hostname => _hostname} = state) do
     Logger.info "disconnected: #{inspect client}"
     {:noreply, state}
-  end  
+  end
 
   def handle_info({:mqttc, client, :connected}, %{:hostname => hostname} = state) do
     topic = "node/" <> hostname
     Logger.info "subscribing to #{topic} with #{inspect client}"
     :emqttc.subscribe(client, topic, :qos1)
     {:noreply, state}
-  end  
+  end
 
   def handle_info(msg, state) do
     Logger.warn "unexpected message: #{inspect msg}"
     {:noreply, state}
-  end  
-  
+  end
+
   defp hostname do
     System.get_env("HOSTNAME")
   end
@@ -158,8 +158,8 @@ defmodule SentinelCore.Switchboard do
 
   defp do_connect(myself, [host, port]) do
     {:ok, remote_client} = :emqttc.start_link([
-      {:host, String.to_charlist(host)}, 
-      {:port, String.to_integer(port)}, 
+      {:host, String.to_charlist(host)},
+      {:port, String.to_integer(port)},
       {:client_id, myself},
       {:reconnect, {1, 120}},
       {:keepalive, 0},
