@@ -14,6 +14,10 @@ services:
       - net-b
     environment:
       - SENTINEL_NETWORK=global
+      - ORG_ID=zdoa4y
+      - DEVICE_TYPE=MyGateway
+      - DEVICE_ID=test-gw-0
+      - AUTH_TOKEN=pm?IdURnSvRh+pe+77
     tty: true
 
   device_a:
