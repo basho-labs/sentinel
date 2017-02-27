@@ -53,37 +53,26 @@ defmodule SentinelCore.Switchboard do
   def handle_info(:connect_to_watson, state) do
 
     # Get Watson Creds
-    org_id = watson_org_id()
-    Map.put(state, :org_id, org_id)
-
-    device_type = watson_device_type()
-    Map.put(state, :device_type, device_type)
-
-    device_id = watson_device_id()
-    Map.put(state, :device_id, device_id)
-
-    auth_token = watson_auth_token()
-    Map.put(state, :auth_token, auth_token)
-
+    watson_opts = watson_opts()
+    org_id = watson_opts[:org_id]
+    device_type = watson_opts[:device_type]
+    device_id = watson_opts[:device_id]
+    auth_token = watson_opts[:auth_token]
     client_id = "g:" <> org_id <> ":" <> device_type <> ":" <> device_id
-    Map.put(state, :client_id, client_id)
-
     host = org_id <> ".messaging.internetofthings.ibmcloud.com"
-    Map.put(state, :watson_host, host)
-
     port = "1883"
-    Map.put(state, :watson_port, port)
-
     username = "use-token-auth"
-    Map.put(state, :watson_username, username)
-
     password = auth_token
-    Map.put(state, :watson_password, password)
-
     watson_client = connect_watson(client_id, [host, port, username, password])
-    Map.put(state, :watson, watson_client)
 
-    {:noreply, state}
+    Map.put(watson_opts, :client_id, client_id)
+    Map.put(watson_opts, :watson_host, host)
+    Map.put(watson_opts, :watson_port, port)
+    Map.put(watson_opts, :watson_username, username)
+    Map.put(watson_opts, :watson_password, password)
+    Map.put(watson_opts, :watson, watson_client)
+
+    {:noreply, Map.put(state, :watson_opts, watson_opts)}
   end
 
   @doc """
@@ -274,20 +263,13 @@ defmodule SentinelCore.Switchboard do
     remote_client
   end
 
-  defp watson_org_id do
-    System.get_env("ORG_ID")
-  end
-
-  defp watson_device_type do
-    System.get_env("DEVICE_TYPE")
-  end
-
-  defp watson_device_id do
-    System.get_env("DEVICE_ID")
-  end
-
-  defp watson_auth_token do
-    System.get_env("AUTH_TOKEN")
+  defp watson_opts do
+    org_id = System.get_env("ORG_ID")
+    device_type = System.get_env("DEVICE_TYPE")
+    device_id = System.get_env("DEVICE_ID")
+    auth_token = System.get_env("AUTH_TOKEN")
+    watson_opts = %{:org_id => org_id, :device_type => device_type, :device_id => device_id, :auth_token => auth_token}
+    watson_opts
   end
 
   defp connect_watson(client_id, [host, port, username, password]) do
