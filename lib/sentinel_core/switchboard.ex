@@ -67,7 +67,7 @@ defmodule SentinelCore.Switchboard do
     Map.put(watson_opts, :watson_username, username)
     Map.put(watson_opts, :watson_password, password)
     Map.put(watson_opts, :watson, watson_client)
-
+    start_gateway_network_sharing(5000)
     {:noreply, Map.put(state, :watson_opts, watson_opts)}
   end
 
@@ -212,6 +212,14 @@ defmodule SentinelCore.Switchboard do
     {:noreply, state}
   end
 
+  def handle_info({:share_gateway_network}, %{:watson_opt => watson_opts, :networks => networks} = state) do
+    %{:watson_client => watson_client} = watson_opts
+    topic = "iot-2/type/MyGateway/id/test-gw-0/cmd/+/fmt/+"
+
+    :emqtt.publish(watson_client, topic, msg)
+
+  end
+
   def handle_info(msg, state) do
     Logger.warn "unhandled message: #{inspect msg}"
     {:noreply, state}
@@ -283,6 +291,15 @@ defmodule SentinelCore.Switchboard do
 
     Logger.debug "connected to: #{inspect watson_client}"
     watson_client
+  end
+
+  defp start_gateway_network_sharing(after_time) do
+    share_gateway_network(after_time)
+  end
+
+  defp share_gateway_network(after_time) do
+    Process.send_after(self(), :share_gateway_network, after_time)
+    share_gateway_network()
   end
 
 end
