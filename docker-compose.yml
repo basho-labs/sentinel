@@ -1,7 +1,7 @@
 version: '2'
 
 services:
-  gateway:
+  gateway_a:
     build: .
     image: sentinel
     labels:
@@ -11,13 +11,30 @@ services:
       - 1883
     networks:
       - net-a
-      - net-b
     environment:
       - SENTINEL_NETWORK=global
       - ORG_ID=zdoa4y
       - DEVICE_TYPE=MyGateway
       - DEVICE_ID=test-gw-0
       - AUTH_TOKEN=pm?IdURnSvRh+pe+77
+    tty: true
+
+  gateway_b:
+    build: .
+    image: sentinel
+    labels:
+      - "swarm=dev"
+      - "role=gateway"
+    ports: 
+      - 1883
+    networks:
+      - net-b
+    environment:
+      - SENTINEL_NETWORK=global
+      - ORG_ID=zdoa4y
+      - DEVICE_TYPE=MyGateway
+      - DEVICE_ID=test-gw-1
+      - AUTH_TOKEN=ly8L@7SnuNS(71oh@J
     tty: true
 
   device_a:
@@ -34,7 +51,7 @@ services:
       - SENTINEL_GATEWAY=sentinel_gateway_1
       - SENTINEL_NETWORK=net-a
     depends_on:
-      - gateway
+      - gateway_a
     tty: true
 
   device_b:
@@ -51,7 +68,7 @@ services:
       - SENTINEL_GATEWAY=sentinel_gateway_1
       - SENTINEL_NETWORK=net-b
     depends_on:
-      - gateway
+      - gateway_b
     tty: true
 
   # test:
