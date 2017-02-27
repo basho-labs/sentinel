@@ -122,9 +122,37 @@ defmodule SentinelCore.Switchboard do
   end
 
   @doc """
+  Dispatch all Published messages on all topics to handler.
+  Split the topic on "/" for easier matching.
+  """
+  def handle_info({:publish, topic, message}, state) do
+    handle_publish(String.split(topic, "/", []), message, state)
+  end
+
+  def handle_info({:mqttc, client, :disconnected}, state) do
+    Logger.info "disconnected: #{inspect client}"
+    {:noreply, state}
+  end
+
+  @doc """
+  Subscribe to our `node/$HOSTNAME` topic on the broker we just connected to.
+  """
+  def handle_info({:mqttc, client, :connected}, %{:hostname => hostname} = state) do
+    topic = "node/" <> hostname
+    Logger.debug "subscribing to #{topic} with #{inspect client}"
+    :emqttc.subscribe(client, topic, :qos1)
+    {:noreply, state}
+  end
+
+  def handle_info(msg, state) do
+    Logger.warn "unhandled message: #{inspect msg}"
+    {:noreply, state}
+  end
+
+  @doc """
   Join the node to the named network and immediately try and connect to it.
   """
-  def handle_info({:publish, "swarm/join/" <> net_name, peer}, %{:networks => networks} = state) do
+  def handle_publish(["swarm", "join", net_name], peer, %{:networks => networks} = state) do
     Logger.debug "joining node #{peer} with #{inspect networks}"
     networks = Map.update(networks, net_name, Network.new([peer]), fn n ->
       Network.add(n, peer)
@@ -140,7 +168,7 @@ defmodule SentinelCore.Switchboard do
   @doc """
   Update the overlay mesh.
   """
-  def handle_info({:publish, "swarm/update/" <> net_name, msg}, %{:networks => networks} = state) do
+  def handle_publish(["swarm", "update", net_name], msg, %{:networks => networks} = state) do
     {new_gateway, new_peers} = :erlang.binary_to_term(msg)
     state = ensure_gateway(state, new_gateway)
 
@@ -159,14 +187,13 @@ defmodule SentinelCore.Switchboard do
           network
       end
     end)
-    
     {:noreply, %{state | networks: networks}}
   end
 
   @doc """
   Handle a message addressed to me.
   """
-  def handle_info({:publish, "node/" <> host, msg}, %{:hostname => hostname} = state) when host == hostname do
+  def handle_publish(["node", host], msg, %{:hostname => hostname} = state) when host == hostname do
     Logger.info "msg to me: #{inspect msg}"
     {:noreply, state}
   end
@@ -197,25 +224,11 @@ defmodule SentinelCore.Switchboard do
     {:noreply, state}
   end
 
-  def handle_info({:mqttc, client, :disconnected}, state) do
-    Logger.info "disconnected: #{inspect client}"
-    {:noreply, state}
+
+  def handle_publish(topic, message, state) do
+
   end
 
-  @doc """
-  Subscribe to our `node/$HOSTNAME` topic on the broker we just connected to.
-  """
-  def handle_info({:mqttc, client, :connected}, %{:hostname => hostname} = state) do
-    topic = "node/" <> hostname
-    Logger.debug "subscribing to #{topic} with #{inspect client}"
-    :emqttc.subscribe(client, topic, :qos1)
-    {:noreply, state}
-  end
-
-  def handle_info(msg, state) do
-    Logger.warn "unhandled message: #{inspect msg}"
-    {:noreply, state}
-  end
 
   defp hostname do
     System.get_env("HOSTNAME")
