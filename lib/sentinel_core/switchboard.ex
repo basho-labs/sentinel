@@ -25,6 +25,7 @@ defmodule SentinelCore.Switchboard do
   Init by connecting to the local broker and creating a subscription for swarm events.
   """
   def init(%{:hostname => hostname} = state) do
+
     # Always connect to the local broker
     mqttc = connect(hostname, "localhost")
     # Subscribe to swarm control messages
@@ -34,6 +35,7 @@ defmodule SentinelCore.Switchboard do
     # If there was a gateway value set in the ENV, send a message to join the swarm
     state = case default_gateway() do
       nil ->
+        send self(), :connect_to_watson
         state
       gw ->
         send self(), :join_to_gateway
@@ -43,6 +45,45 @@ defmodule SentinelCore.Switchboard do
     state = Map.put(state, :client, mqttc)
 
     {:ok, state}
+  end
+
+  @doc """
+  Create a client for Watson IoT and connect.
+  """
+  def handle_info(:connect_to_watson, state) do
+
+    # Get Watson Creds
+    org_id = watson_org_id()
+    Map.put(state, :org_id, org_id)
+
+    device_type = watson_device_type()
+    Map.put(state, :device_type, device_type)
+
+    device_id = watson_device_id()
+    Map.put(state, :device_id, device_id)
+
+    auth_token = watson_auth_token()
+    Map.put(state, :auth_token, auth_token)
+
+    client_id = "g:" <> org_id <> ":" <> device_type <> ":" <> device_id
+    Map.put(state, :client_id, client_id)
+
+    host = org_id <> ".messaging.internetofthings.ibmcloud.com"
+    Map.put(state, :watson_host, host)
+
+    port = "1883"
+    Map.put(state, :watson_port, port)
+
+    username = "use-token-auth"
+    Map.put(state, :watson_username, username)
+
+    password = auth_token
+    Map.put(state, :watson_password, password)
+
+    watson_client = connect_watson(client_id, [host, port, username, password])
+    Map.put(state, :watson, watson_client)
+
+    {:noreply, state}
   end
 
   @doc """
@@ -231,6 +272,39 @@ defmodule SentinelCore.Switchboard do
 
     Logger.debug "connected to: #{inspect remote_client}"
     remote_client
+  end
+
+  defp watson_org_id do
+    System.get_env("ORG_ID")
+  end
+
+  defp watson_device_type do
+    System.get_env("DEVICE_TYPE")
+  end
+
+  defp watson_device_id do
+    System.get_env("DEVICE_ID")
+  end
+
+  defp watson_auth_token do
+    System.get_env("AUTH_TOKEN")
+  end
+
+  defp connect_watson(client_id, [host, port, username, password]) do
+    {:ok, watson_client} = :emqttc.start_link([
+      {:host, String.to_charlist(host)},
+      {:port, String.to_integer(port)},
+      {:client_id, client_id},
+      {:username, username},
+      {:password, password},
+      {:reconnect, {1, 120}},
+      {:keepalive, 0},
+      :auto_resub
+    ])
+    Process.monitor watson_client
+
+    Logger.debug "connected to: #{inspect watson_client}"
+    watson_client
   end
 
 end
