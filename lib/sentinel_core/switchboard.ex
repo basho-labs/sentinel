@@ -53,11 +53,7 @@ defmodule SentinelCore.Switchboard do
   def handle_info(:connect_to_watson, state) do
 
     # Get Watson Creds
-    watson_opts = watson_opts()
-    org_id = watson_opts[:org_id]
-    device_type = watson_opts[:device_type]
-    device_id = watson_opts[:device_id]
-    auth_token = watson_opts[:auth_token]
+    %{:org_id => org_id, :device_type => device_type, :device_id => device_id, :auth_token => auth_token} = watson_opts()
     client_id = "g:" <> org_id <> ":" <> device_type <> ":" <> device_id
     host = org_id <> ".messaging.internetofthings.ibmcloud.com"
     port = "1883"
@@ -268,7 +264,7 @@ defmodule SentinelCore.Switchboard do
     device_type = System.get_env("DEVICE_TYPE")
     device_id = System.get_env("DEVICE_ID")
     auth_token = System.get_env("AUTH_TOKEN")
-    watson_opts = %{:org_id => org_id, :device_type => device_type, :device_id => device_id, :auth_token => auth_token}
+    watson_opts = %{org_id: org_id, device_type: device_type, device_id: device_id, auth_token: auth_token}
     watson_opts
   end
 
