@@ -53,7 +53,8 @@ defmodule SentinelCore.Switchboard do
   def handle_info(:connect_to_watson, state) do
 
     # Get Watson Creds
-    %{:org_id => org_id, :device_type => device_type, :device_id => device_id, :auth_token => auth_token} = watson_opts()
+    watson_opts = watson_opts()
+    %{:org_id => org_id, :device_type => device_type, :device_id => device_id, :auth_token => auth_token} = watson_opts
     client_id = "g:" <> org_id <> ":" <> device_type <> ":" <> device_id
     host = org_id <> ".messaging.internetofthings.ibmcloud.com"
     port = "1883"
@@ -61,13 +62,19 @@ defmodule SentinelCore.Switchboard do
     password = auth_token
     watson_client = connect_watson(client_id, [host, port, username, password])
 
-    Map.put(watson_opts, :client_id, client_id)
-    Map.put(watson_opts, :watson_host, host)
-    Map.put(watson_opts, :watson_port, port)
-    Map.put(watson_opts, :watson_username, username)
-    Map.put(watson_opts, :watson_password, password)
-    Map.put(watson_opts, :watson, watson_client)
-    start_gateway_network_sharing(5000)
+    topic = "iot-2/type/+/id/+/cmd/ping/fmt/+"
+    Logger.debug "subscribing to watson #{topic} with #{inspect watson_client}"
+    :emqttc.subscribe(watson_client, topic, :qos1)
+
+    watson_opts = Map.put(watson_opts, :client_id, client_id)
+    watson_opts = Map.put(watson_opts, :watson_host, host)
+    watson_opts = Map.put(watson_opts, :watson_port, port)
+    watson_opts = Map.put(watson_opts, :watson_username, username)
+    watson_opts = Map.put(watson_opts, :watson_password, password)
+    watson_opts = Map.put(watson_opts, :watson_client, watson_client)
+    Logger.debug "watson_opt: #{inspect watson_opts}"
+    Logger.debug "starting watson pinger"
+    start_watson_ping(5000)
     {:noreply, Map.put(state, :watson_opts, watson_opts)}
   end
 
@@ -191,6 +198,28 @@ defmodule SentinelCore.Switchboard do
     {:noreply, state}
   end
 
+  def handle_info({:publish, "iot-2/" <> rest_of_topic = _topic, msg}, state) do
+
+      topic_list = String.split(rest_of_topic, "/")
+      [_type | rest0] = topic_list
+      [device_type | rest1] = rest0
+      [_id | rest2] = rest1
+      [device_id | rest3] = rest2
+      [_cmd | rest4] = rest3
+      [cmd_topic | rest5] = rest4
+      [_fmt | fmt_type] = rest5
+      case fmt_type do
+        "bin" ->
+            decoded_msg = :erlang.binary_to_term(msg)
+        _ ->
+            decoded_msg = "Handle other msg types"
+      end
+
+      Logger.info "Watson ping from device type: "<> device_type <>" device: " <> device_id <> " topic: " <> cmd_topic
+      Logger.info "msg: #{inspect decoded_msg}"
+      {:noreply, state}
+    end
+
   def handle_info({:publish, topic, msg}, state) do
     Logger.info "topic: " <> topic
     Logger.info "msg: #{inspect msg}"
@@ -212,13 +241,16 @@ defmodule SentinelCore.Switchboard do
     {:noreply, state}
   end
 
-  def handle_info({:share_gateway_network}, %{:watson_opt => watson_opts, :networks => networks} = state) do
-    %{:watson_client => watson_client} = watson_opts
-    topic = "iot-2/type/MyGateway/id/test-gw-0/cmd/+/fmt/+"
-
-    :emqtt.publish(watson_client, topic, msg)
-
+  def handle_info({:ping_watson, after_time}, %{:watson_opts => watson_opts} = state) do
+    Logger.info "pinging watson"
+    %{:watson_client => watson_client, :device_type => device_type, :device_id => device_id} = watson_opts
+    topic = "iot-2/type/"<> device_type <>"/id/"<> device_id <>"/cmd/ping/fmt/bin"
+    msg = :erlang.term_to_binary({device_id})
+    :emqttc.publish(watson_client, topic, msg)
+    Process.send_after(self(), {:ping_watson, after_time}, after_time)
+    {:noreply, state}
   end
+
 
   def handle_info(msg, state) do
     Logger.warn "unhandled message: #{inspect msg}"
@@ -293,13 +325,9 @@ defmodule SentinelCore.Switchboard do
     watson_client
   end
 
-  defp start_gateway_network_sharing(after_time) do
-    share_gateway_network(after_time)
-  end
-
-  defp share_gateway_network(after_time) do
-    Process.send_after(self(), :share_gateway_network, after_time)
-    share_gateway_network()
+  defp start_watson_ping(after_time) do
+    Logger.debug "pinging watson every #{inspect after_time} milliseconds"
+    Process.send_after(self(), {:ping_watson, after_time}, after_time)
   end
 
 end
