@@ -58,7 +58,7 @@ defmodule SentinelCore.Switchboard do
     password = auth_token
     
     watson_client = connect_watson(client_id, [host, port, username, password])
-
+    :emqttc.subscribe(watson_client, "iot-2/type/"<> device_type <> "/id/" <> device_id <> "/cmd/+/fmt/+", :qos1)
     new_opts = %{
       client_id: client_id,
       watson_host: host,
@@ -211,13 +211,11 @@ defmodule SentinelCore.Switchboard do
   end
 
   def handle_publish(["iot-2", "type", device_type, "id", device_id, "cmd", command_id, "fmt", fmt_string], msg, state) do
-    case fmt_string do
-      "bin" ->
-        decoded_msg = :erlang.binary_to_term(msg)
-      _ ->
-        decoded_msg = "Handle other msg types"
+    decoded_msg = case fmt_string do
+      "bin" -> :erlang.binary_to_term(msg)
+      _ -> "Handle other msg types"
     end
-    Logger.info "Watson ping from device type: "<> device_type <>" device: " <> device_id <> " command: " <> command_id
+    Logger.info "Watson command: " <> command_id
     Logger.info "msg: #{inspect decoded_msg}"
     {:noreply, state}
   end
