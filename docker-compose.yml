@@ -13,7 +13,7 @@ services:
       - net-a
     environment:
       - SENTINEL_NETWORK=global
-      - ORG_ID=zdoa4y
+      - ORG_ID=4tlin1
       - DEVICE_TYPE=MyGateway
       - DEVICE_ID=test-gw-0
       - AUTH_TOKEN=pm?IdURnSvRh+pe+77
@@ -31,7 +31,7 @@ services:
       - net-b
     environment:
       - SENTINEL_NETWORK=global
-      - ORG_ID=zdoa4y
+      - ORG_ID=4tlin1
       - DEVICE_TYPE=MyGateway
       - DEVICE_ID=test-gw-1
       - AUTH_TOKEN=ly8L@7SnuNS(71oh@J

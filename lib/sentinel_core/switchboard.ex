@@ -65,7 +65,7 @@ defmodule SentinelCore.Switchboard do
       watson_port: port,
       watson_username: username,
       watson_password: password,
-      watson: watson_client
+      watson_client: watson_client
     }
     Logger.debug "watson_opt: #{inspect watson_opts}"
     Logger.debug "starting watson pinger"
@@ -210,7 +210,7 @@ defmodule SentinelCore.Switchboard do
     {:noreply, state}
   end
 
-  def handle_publish(["iot-2", "type", device_type, "id", device_id, "cmd", command_id, "fmt", fmt_string], _message, state) do
+  def handle_publish(["iot-2", "type", device_type, "id", device_id, "cmd", command_id, "fmt", fmt_string], msg, state) do
     case fmt_string do
       "bin" ->
         decoded_msg = :erlang.binary_to_term(msg)
