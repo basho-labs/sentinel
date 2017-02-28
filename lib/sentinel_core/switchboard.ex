@@ -115,7 +115,8 @@ defmodule SentinelCore.Switchboard do
     network = Map.get(networks, overlay)
     local_peers = Network.peers(network)
 
-    for p <- local_peers, do: send String.to_atom(p), {:send, "swarm/update/" <> overlay, local_peers}
+    pubopts = [{:qos, 2}, {:retain, true}]
+    for p <- local_peers, do: send String.to_atom(p), {:send, "swarm/update/" <> overlay, local_peers, pubopts}
 
     {:noreply, state}
   end

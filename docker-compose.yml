@@ -12,11 +12,10 @@ services:
     networks:
       - net-a
     environment:
-      - SENTINEL_NETWORK=global
       - ORG_ID=4tlin1
       - DEVICE_TYPE=MyGateway
-      - DEVICE_ID=test-gw-0
-      - AUTH_TOKEN=pm?IdURnSvRh+pe+77
+      - DEVICE_ID=test-gw-2
+      - AUTH_TOKEN=ZmBFz34H&wNAy@9AxQ
     tty: true
 
   gateway_b:
@@ -30,11 +29,10 @@ services:
     networks:
       - net-b
     environment:
-      - SENTINEL_NETWORK=global
       - ORG_ID=4tlin1
       - DEVICE_TYPE=MyGateway
-      - DEVICE_ID=test-gw-1
-      - AUTH_TOKEN=ly8L@7SnuNS(71oh@J
+      - DEVICE_ID=test-gw-3
+      - AUTH_TOKEN=vQI1NR+z_CG&)vwT2J
     tty: true
 
   device_a:
@@ -48,8 +46,8 @@ services:
     networks:
       - net-a
     environment:
-      - SENTINEL_GATEWAY=sentinel_gateway_1
-      - SENTINEL_NETWORK=net-a
+      - SENTINEL_DEFAULT_GATEWAY=sentinel_gateway_a_1
+      - SENTINEL_DEFAULT_NETWORK=net-a
     depends_on:
       - gateway_a
     tty: true
@@ -65,8 +63,8 @@ services:
     networks:
       - net-b
     environment:
-      - SENTINEL_GATEWAY=sentinel_gateway_1
-      - SENTINEL_NETWORK=net-b
+      - SENTINEL_DEFAULT_GATEWAY=sentinel_gateway_b_1
+      - SENTINEL_DEFAULT_NETWORK=net-b
     depends_on:
       - gateway_b
     tty: true
