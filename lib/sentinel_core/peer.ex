@@ -17,10 +17,8 @@ defmodule SentinelCore.Peer do
       {:host, String.to_charlist(host)},
       {:port, port},
       {:client_id, System.get_env("HOSTNAME")},
-      {:reconnect, {1, 120}},
-      {:keepalive, 0},
-      {:clean_sess, true},
-      :auto_resub
+      {:keepalive, 10},
+      {:clean_sess, true}
     ] ++ opts
     Logger.debug "[peer] connection options: #{inspect connect_opts}"
 
@@ -55,7 +53,7 @@ defmodule SentinelCore.Peer do
 
   def handle_info({:connect, connect_opts}, state) do
     {:ok, remote_client} = :emqttc.start_link(connect_opts)
-    Process.monitor remote_client
+    Process.link remote_client
     Logger.debug "[peer] connected to: #{inspect remote_client}"
     {:noreply, Map.put(state, :client, remote_client)}
   end
@@ -64,10 +62,10 @@ defmodule SentinelCore.Peer do
     Logger.debug "[peer] MQTT client connected #{inspect client}"
     case name do
       :localhost ->
-        :emqttc.subscribe(client, "swarm/#", :qos2)
-        :emqttc.subscribe(client, "node/#", :qos1)
+        :ok = :emqttc.subscribe(client, "swarm/#", :qos2)
+        :ok = :emqttc.subscribe(client, "node/#", :qos1)
       _peer ->
-        :emqttc.subscribe(client, "node/" <> to_string(name), :qos1)
+        :ok = :emqttc.subscribe(client, "node/" <> to_string(name), :qos1)
     end
     {:noreply, state}
   end
@@ -77,9 +75,13 @@ defmodule SentinelCore.Peer do
     {:noreply, state}
   end
 
-  def handle_info({:send, topic, msg}, %{:client => client} = state) do
+  def handle_info({:send, topic, msg}, state) do
+    handle_info({:send, topic, msg, []}, state)
+  end
+
+  def handle_info({:send, topic, msg, pubopts}, %{:client => client} = state) do
     to_send = {System.get_env("HOSTNAME"), msg}
-    :emqttc.publish(client, topic, :erlang.term_to_binary(to_send))
+    :emqttc.publish(client, topic, :erlang.term_to_binary(to_send), pubopts)
     {:noreply, state}
   end
 
