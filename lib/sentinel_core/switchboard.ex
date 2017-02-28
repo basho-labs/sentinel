@@ -67,8 +67,20 @@ defmodule SentinelCore.Switchboard do
       watson_password: password,
       watson: watson_client
     }
-
+    Logger.debug "watson_opt: #{inspect watson_opts}"
+    Logger.debug "starting watson pinger"
+    start_watson_ping(5000)
     {:noreply, Map.put(state, :watson_opts, Map.merge(watson_opts, new_opts))}
+  end
+
+  def handle_info({:ping_watson, after_time}, %{:watson_opts => watson_opts} = state) do
+    Logger.info "pinging watson"
+    %{:watson_client => watson_client, :device_type => device_type, :device_id => device_id} = watson_opts
+    topic = "iot-2/type/"<> device_type <>"/id/"<> device_id <>"/evt/ping/fmt/bin"
+    msg = :erlang.term_to_binary({device_id})
+    :emqttc.publish(watson_client, topic, msg)
+    Process.send_after(self(), {:ping_watson, after_time}, after_time)
+    {:noreply, state}
   end
 
   @doc """
@@ -198,6 +210,18 @@ defmodule SentinelCore.Switchboard do
     {:noreply, state}
   end
 
+  def handle_publish(["iot-2", "type", device_type, "id", device_id, "cmd", command_id, "fmt", fmt_string], _message, state) do
+    case fmt_string do
+      "bin" ->
+        decoded_msg = :erlang.binary_to_term(msg)
+      _ ->
+        decoded_msg = "Handle other msg types"
+    end
+    Logger.info "Watson ping from device type: "<> device_type <>" device: " <> device_id <> " command: " <> command_id
+    Logger.info "msg: #{inspect decoded_msg}"
+    {:noreply, state}
+  end
+
   def handle_publish(_topic, _message, state) do
     {:noreply, state}
   end
@@ -236,6 +260,11 @@ defmodule SentinelCore.Switchboard do
 
     Logger.debug "connected to: #{inspect watson_client}"
     watson_client
+  end
+
+  defp start_watson_ping(after_time) do
+      Logger.debug "pinging watson every #{inspect after_time} milliseconds"
+      Process.send_after(self(), {:ping_watson, after_time}, after_time)
   end
 
 end
