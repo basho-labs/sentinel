@@ -27,6 +27,7 @@ RUN MIX_ENV=prod mix release
 RUN cp -R _build/prod/rel/sentinel_core /opt/sentinel
 RUN rm -rf /var/lib/apt/lists/* /tmp/* /usr/src/*
 
+COPY mosquitto.conf /etc/mosquitto/conf.d/user.conf
 EXPOSE 1883
 
 COPY start.sh /opt/sentinel/start.sh
