@@ -12,4 +12,4 @@ RUN chmod a+x /start.sh
 ADD ./mqtt-message-relay.py /
 RUN chmod a+x /mqtt-message-relay.py
 
-ENTRYPOINT /start.sh local
+ENTRYPOINT /start.sh $RELAY_API_KEY $RELAY_AUTH_TOKEN $ORG_ID $RELAY_ID

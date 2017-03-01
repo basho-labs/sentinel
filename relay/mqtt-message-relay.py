@@ -1,8 +1,9 @@
 import paho.mqtt.client as mqtt
 import paho.mqtt.publish as publish
 import paho.mqtt.subscribe as subscribe
+import sys
 
-gateways = []
+gateways = dict()
 
 def on_connect(_mqttc, obj, flags, status):
     print("connected: status=%s" % (status))
@@ -30,64 +31,52 @@ def on_message(_mqttc, obj, msg):
     event = url[6]
     msg_format = url[8]
 
-    #Support ping event and events identified by intended recipient
-    if typeId == 'MyGateway':
+    if event == 'ping':
+        if typeId not in gateways.keys():
+            gateways[typeId] = [deviceId]
+        if typeId in gateways.keys() and deviceId not in gateways[typeId]:
+            gws = gateways[typeId]
+            gws.append(deviceId)
+            gateways[typeId] = gws
+        for gw in gateways[typeId]:
+            if gw != deviceId:
+                topic = 'iot-2/type/'+typeId+'/id/'+gw+'/cmd/'+event+'/fmt/'+msg_format
+                _mqttc.publish(topic, msg.payload)
 
-        if event == 'ping':
+    elif event != 'ping' and typeId in gateways.keys() and event in gateways[typeId]:
+        topic = 'iot-2/type/'+typeId+'/id/'+event+'/cmd/message/fmt/'+msg_format
+        _mqttc.publish(topic, msg.payload)
 
-            if deviceId == 'test-gw-0':
-                sendDeviceId = 'test-gw-1'
-            elif deviceId == 'test-gw-1':
-                sendDeviceId = 'test-gw-0'
-            elif deviceId == 'test-gw-2':
-                sendDeviceId = 'test-gw-3'
-            elif deviceId == 'test-gw-3':
-                sendDeviceId = 'test-gw-2'
-            elif deviceId == 'test-gw-4':
-                sendDeviceId = 'test-gw-5'
-            else:
-                sendDeviceId = 'test-gw-04'
-
-            topic = 'iot-2/type/'+typeId+'/id/'+sendDeviceId+'/cmd/message/fmt/'+msg_format
-            _mqttc.publish(topic, msg.payload)
-
-        else:
-            topic = 'iot-2/type/'+typeId+'/id/'+event+'/cmd/message/fmt/'+msg_format
-            _mqttc.publish(topic, msg.payload)
-
-    elif typeId == 'test-gateway':
-
-        if event == 'ping':
-            if deviceId not in gateways:
-                gateways.append(deviceId)
-            for gw in gateways:
-                if gw != deviceId:
-                    topic = 'iot-2/type/'+typeId+'/id/'+gw+'/cmd/'+event+'/fmt/'+msg_format
-                    _mqttc.publish(topic, msg.payload)
-
-        elif event != 'ping' and event in gateways:
-            topic = 'iot-2/type/'+typeId+'/id/'+event+'/cmd/message/fmt/'+msg_format
-            _mqttc.publish(topic, msg.payload)
-
-        elif event != 'ping' and event not in gateways and deviceId in gateways:
-            for gw in gateways:
-                if gw != deviceId:
-                    topic = 'iot-2/type/'+typeId+'/id/'+gw+'/cmd/'+event+'/fmt/'+msg_format
-                    _mqttc.publish(topic, msg.payload)
+    elif event != 'ping' and typeId in gateways.keys() and event not in gateways[typeId] and deviceId in gateways[typeId]:
+        for gw in gateways[typeId]:
+            if gw != deviceId:
+                topic = 'iot-2/type/'+typeId+'/id/'+gw+'/cmd/'+event+'/fmt/'+msg_format
+                _mqttc.publish(topic, msg.payload)
+    else:
+        print('Unhandled')
 
     send_url = topic.split('/')
     print('Send URL:')
     print(send_url)
     return
 
-mqttc = mqtt.Client('a:4tlin1:a2g6k39sl6r5')
-mqttc.username_pw_set('a-4tlin1-j3fhzvb4i4', password='aZ2HlOA10+OcLYh7mV')
+api_key = sys.argv[1]
+auth_token = sys.argv[2]
+org_id = sys.argv[3]
+relay_id = sys.argv[4]
+
+client_id = 'a:'+org_id+':'+relay_id
+host = org_id+'.messaging.internetofthings.ibmcloud.com'
+
+
+mqttc = mqtt.Client(client_id)
+mqttc.username_pw_set(api_key, password=auth_token)
 
 mqttc.on_connect = on_connect
 mqttc.on_subscribe = on_subscribe
 mqttc.on_message = on_message
 
-mqttc.connect(host='4tlin1.messaging.internetofthings.ibmcloud.com', port=1883, keepalive=60)
+mqttc.connect(host=host, port=1883, keepalive=60)
 
 mqttc.subscribe('iot-2/type/+/id/+/evt/+/fmt/+', 0)
 

@@ -1,6 +1,23 @@
 version: '2'
 
 services:
+  cloud_relay:
+      build: ./relay
+      image: cloud_relay
+      labels:
+        - "swarm=dev"
+        - "role=relay"
+      ports:
+        - 1883
+      networks:
+        - net-a
+      environment:
+        - ORG_ID
+        - RELAY_API_KEY
+        - RELAY_ID
+        - RELAY_AUTH_TOKEN
+      tty: true
+
   gateway_a:
     build: .
     image: sentinel
@@ -12,10 +29,10 @@ services:
     networks:
       - net-a
     environment:
-      # - ORG_ID=4tlin1
-      - DEVICE_TYPE=test-gateway
-      - DEVICE_ID=test-gateway-2
-      - AUTH_TOKEN=7Q6PwP@EgbAaAjeP_*
+      - ORG_ID
+      - DEVICE_TYPE=${DEVICE_TYPE}
+      - DEVICE_ID=${DEVICE_ID_A}
+      - AUTH_TOKEN=${AUTH_TOKEN_A}
     tty: true
 
   gateway_b:
@@ -29,10 +46,10 @@ services:
     networks:
       - net-b
     environment:
-      # - ORG_ID=4tlin1
-      - DEVICE_TYPE=test-gateway
-      - DEVICE_ID=test-gateway-3
-      - AUTH_TOKEN=kyYrn8D7wJ1cWR_1hI
+      - ORG_ID
+      - DEVICE_TYPE=${DEVICE_TYPE}
+      - DEVICE_ID=${DEVICE_ID_B}
+      - AUTH_TOKEN=${AUTH_TOKEN_B}
     tty: true
 
   device_a:
