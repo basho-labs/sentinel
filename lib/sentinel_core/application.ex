@@ -11,6 +11,7 @@ defmodule SentinelCore.Application do
     # Define workers and child supervisors to be supervised
     children = [
       # Starts a worker by calling: SentinelCore.Worker.start_link(arg1, arg2, arg3)
+      supervisor(SentinelCore.PeerSupervisor, [], name: SentinelCore.PeerSupervisor),
       worker(SentinelCore.Switchboard, [], name: SentinelCore.Switchboard)
     ]
 
