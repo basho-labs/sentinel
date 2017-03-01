@@ -1,0 +1,40 @@
+version: '2'
+
+services:
+
+  gateway:
+    build: .
+    image: sentinel
+    labels:
+      - "swarm=simple"
+      - "role=gateway"
+    ports: 
+      - 1883
+    networks:
+      - net
+    tty: true
+
+  device:
+    build: .
+    image: sentinel
+    labels:
+      - "swarm=simple"
+      - "role=device"
+    ports: 
+      - 1883
+    networks:
+      - net
+    environment:
+      - SENTINEL_DEFAULT_GATEWAY=sentinel_gateway_1
+      - SENTINEL_DEFAULT_NETWORK=net
+    depends_on:
+      - gateway
+    tty: true
+
+networks:
+  net:
+    driver: bridge
+    ipam:
+      driver: default
+      config:
+      - subnet: 10.1.3.0/24

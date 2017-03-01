@@ -23,6 +23,8 @@ defmodule SentinelCore.Switchboard do
   Init by connecting to the local broker and creating a subscription for swarm events.
   """
   def init(state) do
+    # Populate our view of the local peers by first adding ourself
+    state = Map.put(state, SentinelCore.default_network(), Network.new([SentinelCore.hostname()]))
     # If there was a gateway value set in the ENV, send a message to join the swarm
     state = case SentinelCore.default_gateway() do
       nil ->
@@ -98,11 +100,14 @@ defmodule SentinelCore.Switchboard do
   def handle_info({:connect_local_peers, overlay}, %{:networks => networks} = state) do
     network = Map.get(networks, overlay)
     local_peers = Network.peers(network)
+    myself = SentinelCore.hostname()
 
     # Find which peers we don't have clients for
-    not_connected = Enum.filter(local_peers, fn p -> Process.whereis(String.to_atom(p)) == nil end)
+    not_connected = Enum.filter(local_peers, fn p -> 
+      p != myself and Process.whereis(String.to_atom(p)) == nil 
+    end)
     Logger.debug "[switchboard] not connected: #{inspect not_connected}"
-    for p <- local_peers, do: PeerSupervisor.connect(p)
+    for p <- not_connected, do: PeerSupervisor.connect(p)
 
     {:noreply, state}
   end
@@ -114,9 +119,10 @@ defmodule SentinelCore.Switchboard do
     # Gossip peers to everyone I know
     network = Map.get(networks, overlay)
     local_peers = Network.peers(network)
+    myself = SentinelCore.hostname()
 
-    pubopts = [{:retain, true}]
-    for p <- local_peers, do: send String.to_atom(p), {:send, "swarm/update/" <> overlay, local_peers, pubopts}
+    pubopts = [{:qos, 1}, {:retain, true}]
+    for p <- local_peers, p != myself, do: send String.to_atom(p), {:send, "swarm/update/" <> overlay, local_peers, pubopts}
 
     {:noreply, state}
   end
@@ -126,16 +132,8 @@ defmodule SentinelCore.Switchboard do
   
   TODO: Whether the message is really handled or not depends on whether I'm a replica for this node.
   """
-  def handle_info({:publish, "node/" <> host = _topic, msg}, %{:gateway => gateway} = state) when nil != gateway do
-    state = case Process.whereis(String.to_atom(host)) do
-      nil ->
-        # Non-local node. Forward to gateway.
-        handle_forward({:nonlocal, host, msg}, state)
-      _pid ->
-        # Local node. Send to local broker.
-        handle_forward({:local, host, msg}, state)
-    end
-    {:noreply, state}
+  def handle_info({:publish, "node/" <> host = topic, msg}, state) do
+    handle_publish(String.split(topic, "/"), msg, state)
   end
 
   @doc """
@@ -201,17 +199,12 @@ defmodule SentinelCore.Switchboard do
   @doc """
   Handle a message addressed to me.
   """
-  def handle_publish(["node", host], msg, %{:name => name} = state) do
-    case to_string(name) do
-      ^host -> 
-        Logger.info "[switchboard] msg to me: #{inspect msg}"
-      other_host ->
-        Logger.warn "[switchboard] msg NOT to me: #{other_host} #{inspect msg}"
-    end
-    {:noreply, state}
+  def handle_publish(["node", host], msg, state) do
+    myself = SentinelCore.hostname()
+    handle_node_publish(myself, host, msg, state)
   end
 
-  def handle_publish(["iot-2", "type", device_type, "id", device_id, "cmd", command_id, "fmt", fmt_string], msg, state) do
+  def handle_publish(["iot-2", "type", _device_type, "id", _device_id, "cmd", command_id, "fmt", fmt_string], msg, state) do
     decoded_msg = case fmt_string do
       "bin" -> :erlang.binary_to_term(msg)
       _ -> "Handle other msg types"
@@ -221,19 +214,18 @@ defmodule SentinelCore.Switchboard do
     {:noreply, state}
   end
 
-  def handle_publish(_topic, _message, state) do
+  def handle_publish(topic, message, state) do
+    Logger.warn "[switchboard] unhandled message #{topic} #{inspect message}"
     {:noreply, state}
   end
 
-  def handle_forward({:nonlocal, host, msg}, %{:gateway => gateway} = state) do
-    Logger.debug "non-local forward for #{host}. Sending to #{inspect gateway}."
-    send gateway, {:send, "node/" <> host, msg}
+  defp handle_node_publish(myself, host, msg, state) when myself == host do
+    Logger.warn "[switchboard] unhandled message intended for me #{topic} #{inspect message}"
     {:noreply, state}
   end
 
-  def handle_forward({:local, host, msg}, state) do
-    Logger.debug "local forward for #{host}. Sending to localhost."
-    send :localhost, {:send, "node/" <> host, msg}
+  defp handle_node_publish(myself, host, msg, state) do
+    Logger.warn "[switchboard] unhandled message not intended for me #{topic} #{inspect message}"
     {:noreply, state}
   end
 
