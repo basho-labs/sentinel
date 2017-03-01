@@ -128,15 +128,6 @@ defmodule SentinelCore.Switchboard do
   end
 
   @doc """
-  Handle a message not intended for me. 
-  
-  TODO: Whether the message is really handled or not depends on whether I'm a replica for this node.
-  """
-  def handle_info({:publish, "node/" <> host = topic, msg}, state) do
-    handle_publish(String.split(topic, "/"), msg, state)
-  end
-
-  @doc """
   Dispatch all Published messages on all topics to handler.
   Split the topic on "/" for easier matching.
   """
@@ -220,12 +211,12 @@ defmodule SentinelCore.Switchboard do
   end
 
   defp handle_node_publish(myself, host, msg, state) when myself == host do
-    Logger.warn "[switchboard] unhandled message intended for me #{topic} #{inspect message}"
+    Logger.warn "[switchboard] unhandled message intended for me (#{myself}): #{inspect msg}"
     {:noreply, state}
   end
 
   defp handle_node_publish(myself, host, msg, state) do
-    Logger.warn "[switchboard] unhandled message not intended for me #{topic} #{inspect message}"
+    Logger.warn "[switchboard] unhandled message for peer (#{host}) not intended for me (#{myself}): #{inspect msg}"
     {:noreply, state}
   end
 
