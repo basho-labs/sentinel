@@ -17,8 +17,8 @@ defmodule SentinelCore.Peer do
       {:host, String.to_charlist(host)},
       {:port, port},
       {:client_id, System.get_env("HOSTNAME")},
-      {:keepalive, 10},
-      {:clean_sess, true}
+      {:keepalive, 300},
+      {:clean_sess, false}
     ] ++ opts
     Logger.debug "[peer] connection options: #{inspect connect_opts}"
 
@@ -46,6 +46,12 @@ defmodule SentinelCore.Peer do
     {:reply, oldval, %{state | metadata: metadata}}
   end
 
+  def handle_call({:sync_send, topic, msg, pubopts}, _from, %{:client => client} = state) do
+    to_send = {System.get_env("HOSTNAME"), msg}
+    result = :emqttc.sync_publish(client, topic, :erlang.term_to_binary(to_send), pubopts)
+    {:reply, result, state}
+  end
+
   def handle_call(msg, state) do
     Logger.debug "[peer] unhandled call message: #{inspect msg}"
     {:noreply, state}
@@ -62,10 +68,9 @@ defmodule SentinelCore.Peer do
     Logger.debug "[peer] MQTT client connected #{inspect client}"
     case name do
       :localhost ->
-        :ok = :emqttc.subscribe(client, "swarm/#", :qos2)
-        :ok = :emqttc.subscribe(client, "node/#", :qos1)
+        for t <- ["swarm/#", "node/#"], do: :emqttc.subscribe(client, t, :qos1)
       _peer ->
-        :ok = :emqttc.subscribe(client, "node/" <> to_string(name), :qos1)
+        :emqttc.subscribe(client, "node/" <> SentinelCore.hostname(), :qos1)
     end
     {:noreply, state}
   end
@@ -80,14 +85,15 @@ defmodule SentinelCore.Peer do
   end
 
   def handle_info({:send, topic, msg, pubopts}, %{:client => client} = state) do
-    to_send = {System.get_env("HOSTNAME"), msg}
+    to_send = {SentinelCore.hostname(), msg}
     :emqttc.publish(client, topic, :erlang.term_to_binary(to_send), pubopts)
     {:noreply, state}
   end
 
   def handle_info({:publish, topic, msg}, state) do
-    Logger.debug "[peer] unhandled info message: #{inspect msg}"
-    send SentinelCore.Switchboard, {:publish, topic, :erlang.binary_to_term(msg)}
+    msg = :erlang.binary_to_term(msg)
+    Logger.debug "[peer] forwarding #{topic} #{inspect msg} to switchboard"
+    send SentinelCore.Switchboard, {:publish, topic, msg}
     {:noreply, state}
   end
   
