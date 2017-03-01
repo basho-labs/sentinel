@@ -115,7 +115,7 @@ defmodule SentinelCore.Switchboard do
     network = Map.get(networks, overlay)
     local_peers = Network.peers(network)
 
-    pubopts = [{:qos, 2}, {:retain, true}]
+    pubopts = [{:retain, true}]
     for p <- local_peers, do: send String.to_atom(p), {:send, "swarm/update/" <> overlay, local_peers, pubopts}
 
     {:noreply, state}
@@ -226,11 +226,13 @@ defmodule SentinelCore.Switchboard do
   end
 
   def handle_forward({:nonlocal, host, msg}, %{:gateway => gateway} = state) do
+    Logger.debug "non-local forward for #{host}. Sending to #{inspect gateway}."
     send gateway, {:send, "node/" <> host, msg}
     {:noreply, state}
   end
 
   def handle_forward({:local, host, msg}, state) do
+    Logger.debug "local forward for #{host}. Sending to localhost."
     send :localhost, {:send, "node/" <> host, msg}
     {:noreply, state}
   end
