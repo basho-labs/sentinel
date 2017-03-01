@@ -12,7 +12,6 @@ services:
     networks:
       - net-a
     environment:
-      - SENTINEL_NETWORK=global
       - ORG_ID=4tlin1
       - DEVICE_TYPE=test-gateway
       - DEVICE_ID=test-gateway-0
@@ -30,7 +29,6 @@ services:
     networks:
       - net-b
     environment:
-      - SENTINEL_NETWORK=global
       - ORG_ID=4tlin1
       - DEVICE_TYPE=test-gateway
       - DEVICE_ID=test-gateway-1

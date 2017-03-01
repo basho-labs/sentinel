@@ -21,7 +21,7 @@ ENV ELIXIR_ERL_OPTIONS "+pc unicode"
 
 RUN mix local.hex --force
 RUN mix local.rebar --force
-RUN mix deps.get
+# RUN mix deps.get
 RUN MIX_ENV=prod mix release
 
 RUN cp -R _build/prod/rel/sentinel_core /opt/sentinel
