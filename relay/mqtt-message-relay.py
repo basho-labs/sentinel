@@ -38,10 +38,11 @@ def on_message(_mqttc, obj, msg):
             gws = gateways[typeId]
             gws.append(deviceId)
             gateways[typeId] = gws
-        for gw in gateways[typeId]:
-            if gw != deviceId:
-                topic = 'iot-2/type/'+typeId+'/id/'+gw+'/cmd/'+event+'/fmt/'+msg_format
-                _mqttc.publish(topic, msg.payload)
+            for gw in gateways[typeId]:
+                if gw != deviceId:
+                    topic = 'iot-2/type/'+typeId+'/id/'+gw+'/cmd/ping_update/fmt/text'#+msg_format
+                    gw_list_msg = "-".join(gateways[typeId])
+                    _mqttc.publish(topic, gw_list_msg)
 
     elif event != 'ping' and typeId in gateways.keys() and event in gateways[typeId]:
         topic = 'iot-2/type/'+typeId+'/id/'+event+'/cmd/message/fmt/'+msg_format

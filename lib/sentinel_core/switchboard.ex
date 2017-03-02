@@ -71,7 +71,7 @@ defmodule SentinelCore.Switchboard do
     }
     Logger.debug "watson_opt: #{inspect watson_opts}"
     Logger.debug "starting watson pinger"
-    start_watson_ping(5000)
+    start_watson_join(5000)
     {:noreply, Map.put(state, :watson_opts, Map.merge(watson_opts, new_opts))}
   end
 
@@ -198,11 +198,26 @@ defmodule SentinelCore.Switchboard do
   def handle_publish(["iot-2", "type", _device_type, "id", _device_id, "cmd", command_id, "fmt", fmt_string], msg, state) do
     decoded_msg = case fmt_string do
       "bin" -> :erlang.binary_to_term(msg)
-      _ -> "Handle other msg types"
+      "text"-> msg
+      "json"-> msg
+      _ -> "Bad datatype"
     end
+
+    case command_id do
+      "ping_update" -> handle_ping_update(decoded_msg, state)
+      _ -> "Bad command"
+    end
+
     Logger.info "Watson command: " <> command_id
     Logger.info "msg: #{inspect decoded_msg}"
     {:noreply, state}
+  end
+
+  def handle_ping_update(msg_string, state) do
+    #msg string should be - delimited string of gateway device_ids
+    cloud_gateways = String.split(msg_string, "-")
+    #update watson network with cloud gateways
+    handle_publish(["swarm", "update", "watson"], {_from, cloud_gateways}, state)
   end
 
   def handle_publish(topic, message, state) do
