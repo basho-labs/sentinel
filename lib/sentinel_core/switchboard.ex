@@ -24,6 +24,7 @@ defmodule SentinelCore.Switchboard do
   """
   def init(state) do
     # Populate our view of the local peers by first adding ourself
+    # TODO This results in `:nil` in gateways because we don't set the SENTINEL_DEFAULT_NETWORK env var
     state = Map.put(state, SentinelCore.default_network(), Network.new([SentinelCore.hostname()]))
     # If there was a gateway value set in the ENV, send a message to join the swarm
     state = case SentinelCore.default_gateway() do
@@ -71,7 +72,7 @@ defmodule SentinelCore.Switchboard do
     }
     Logger.debug "watson_opt: #{inspect watson_opts}"
     Logger.debug "starting watson pinger"
-    start_watson_join(5000)
+    start_watson_ping(5000)
     {:noreply, Map.put(state, :watson_opts, Map.merge(watson_opts, new_opts))}
   end
 
@@ -217,7 +218,7 @@ defmodule SentinelCore.Switchboard do
     #msg string should be - delimited string of gateway device_ids
     cloud_gateways = String.split(msg_string, "-")
     #update watson network with cloud gateways
-    handle_publish(["swarm", "update", "watson"], {_from, cloud_gateways}, state)
+    handle_publish(["swarm", "update", "watson"], {:unknown, cloud_gateways}, state)
   end
 
   def handle_publish(topic, message, state) do
