@@ -214,16 +214,16 @@ defmodule SentinelCore.Switchboard do
     {:noreply, state}
   end
 
+  def handle_publish(topic, message, state) do
+    Logger.warn "[switchboard] unhandled message #{topic} #{inspect message}"
+    {:noreply, state}
+  end
+
   def handle_ping_update(msg_string, state) do
     #msg string should be - delimited string of gateway device_ids
     cloud_gateways = String.split(msg_string, "-")
     #update watson network with cloud gateways
     handle_publish(["swarm", "update", "watson"], {:unknown, cloud_gateways}, state)
-  end
-
-  def handle_publish(topic, message, state) do
-    Logger.warn "[switchboard] unhandled message #{topic} #{inspect message}"
-    {:noreply, state}
   end
 
   defp handle_node_publish(myself, host, msg, state) when myself == host do

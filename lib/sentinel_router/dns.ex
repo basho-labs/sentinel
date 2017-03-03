@@ -1,6 +1,5 @@
 defmodule SentinelRouter.DNS do
   use GenServer
-
   @behaviour DNS.Server
 
   def start_link do
@@ -11,7 +10,7 @@ defmodule SentinelRouter.DNS do
     {:ok, %{}}
   end
 
-  def handle(record, {ip, _}) do
+  def handle(record, {_ip, _}) do
     query = hd(record.qdlist)
 
     resource = %DNS.Resource{

@@ -33,6 +33,7 @@ defmodule SentinelCore.Mixfile do
       {:quixir, "~> 0.9", only: :test},
       {:distillery, "~> 1.1"},
       {:emqttc, git: "https://github.com/emqtt/emqttc.git", branch: "master"},
+      {:socket, "~> 0.3.5"},
       {:dns, "~> 0.0.4"}
     ]
   end
