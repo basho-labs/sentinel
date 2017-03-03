@@ -33,6 +33,7 @@ services:
       - DEVICE_TYPE=${DEVICE_TYPE}
       - DEVICE_ID=${DEVICE_ID_A}
       - AUTH_TOKEN=${AUTH_TOKEN_A}
+    hostname: ${DEVICE_ID_A}
     tty: true
 
   gateway_b:
@@ -50,6 +51,7 @@ services:
       - DEVICE_TYPE=${DEVICE_TYPE}
       - DEVICE_ID=${DEVICE_ID_B}
       - AUTH_TOKEN=${AUTH_TOKEN_B}
+    hostname: ${DEVICE_ID_B}
     tty: true
 
   device_a:

@@ -91,7 +91,7 @@ defmodule SentinelCore.Peer do
   end
 
   def handle_info({:publish, topic, msg}, state) do
-    msg = :erlang.binary_to_term(msg)
+    # msg = :erlang.binary_to_term(msg)
     Logger.debug "[peer] forwarding #{topic} #{inspect msg} to switchboard"
     send SentinelCore.Switchboard, {:publish, topic, msg}
     {:noreply, state}
