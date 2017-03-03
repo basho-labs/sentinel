@@ -220,12 +220,12 @@ defmodule SentinelCore.Switchboard do
   end
 
   defp handle_node_publish(myself, host, msg, state) when myself == host do
-    Logger.warn "[switchboard] unhandled message intended for me #{topic} #{inspect message}"
+    Logger.warn "[switchboard] unhandled message intended for me #{inspect msg}"
     {:noreply, state}
   end
 
   defp handle_node_publish(myself, host, msg, state) do
-    Logger.warn "[switchboard] unhandled message not intended for me #{topic} #{inspect message}"
+    Logger.warn "[switchboard] unhandled message not intended for me #{host} #{inspect msg}"
     {:noreply, state}
   end
 

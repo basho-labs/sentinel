@@ -3,7 +3,7 @@ FROM ubuntu
 ENV DEBIAN_FRONTEND noninteractive
 ENV DEBCONF_NONINTERACTIVE_SEEN true
 
-RUN apt-get update
+RUN apt-get update --fix-missing
 RUN apt-get install -y apt-transport-https curl git mosquitto
 
 RUN echo "deb https://packages.erlang-solutions.com/ubuntu xenial contrib" >>/etc/apt/sources.list

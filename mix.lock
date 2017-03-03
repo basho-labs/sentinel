@@ -1,7 +1,9 @@
 %{"distillery": {:hex, :distillery, "1.1.2", "4cf32ecc70ca7eecca9e52e111edf320bd78011050825863cd8bc7ffee686c5d", [:mix], []},
+  "dns": {:hex, :dns, "0.0.4", "2e347a0a03e8345bc70c6d69ed08788103a3bec81b93e4636b1b432110835436", [:mix], [{:socket, "~> 0.3.5", [hex: :socket, optional: false]}]},
   "emqttc": {:git, "https://github.com/emqtt/emqttc.git", "d4cbc38808fec0bda30be245268e876283c0e49f", [branch: "master"]},
   "gen_logger": {:git, "https://github.com/emqtt/gen_logger.git", "f6e9f2f373d99f41ffe0579ab5a5f3b19472c9c5", [branch: "master"]},
   "goldrush": {:git, "https://github.com/basho/goldrush.git", "8f1b715d36b650ec1e1f5612c00e28af6ab0de82", [tag: "0.1.9"]},
   "lager": {:git, "https://github.com/basho/lager.git", "81eaef0ce98fdbf64ab95665e3bc2ec4b24c7dac", [branch: "master"]},
   "pollution": {:hex, :pollution, "0.9.0", "2d172aeedc444f0fc06a69b03bb6a560fb141bcafcc0c8189c29b10ee6e50893", [:mix], []},
-  "quixir": {:hex, :quixir, "0.9.1", "b9a45930f330ba485c1cb976afc9f5ceb14ebbe10faf755e0796bb971396c37c", [:mix], [{:pollution, "~> 0.9", [hex: :pollution, optional: false]}]}}
+  "quixir": {:hex, :quixir, "0.9.1", "b9a45930f330ba485c1cb976afc9f5ceb14ebbe10faf755e0796bb971396c37c", [:mix], [{:pollution, "~> 0.9", [hex: :pollution, optional: false]}]},
+  "socket": {:hex, :socket, "0.3.7", "68c029a8449fc6efc5f4c3bdf6d8b19ca94d3304e419f364c5cfc8b716f7c219", [:mix], []}}
