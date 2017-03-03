@@ -1,27 +1,14 @@
-FROM ubuntu
+FROM jbrisbin/elixir:ubuntu-16.04
 
-ENV DEBIAN_FRONTEND noninteractive
-ENV DEBCONF_NONINTERACTIVE_SEEN true
-
-RUN apt-get update --fix-missing
-RUN apt-get install -y apt-transport-https curl git mosquitto
-
-RUN echo "deb https://packages.erlang-solutions.com/ubuntu xenial contrib" >>/etc/apt/sources.list
-RUN curl -sO https://packages.erlang-solutions.com/ubuntu/erlang_solutions.asc
-RUN apt-key add erlang_solutions.asc
 RUN apt-get update
-RUN apt-get install -y erlang-src elixir
+RUN apt-get install -y erlang-src build-essential-
 
 COPY . /usr/src/sentinel_core
 WORKDIR /usr/src/sentinel_core
 
-RUN locale-gen en_US.UTF-8
 ENV LANG en_US.UTF-8
-ENV LC_CTYPE en_US.UTF-8
 ENV ELIXIR_ERL_OPTIONS "+pc unicode"
 
-RUN mix local.hex --force
-RUN mix local.rebar --force
 RUN mix deps.get
 RUN MIX_ENV=prod mix release
 
