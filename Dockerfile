@@ -10,7 +10,7 @@ RUN echo "deb https://packages.erlang-solutions.com/ubuntu xenial contrib" >>/et
 RUN curl -sO https://packages.erlang-solutions.com/ubuntu/erlang_solutions.asc
 RUN apt-key add erlang_solutions.asc
 RUN apt-get update
-RUN apt-get install -y erlang elixir
+RUN apt-get install -y erlang-src elixir
 
 COPY . /usr/src/sentinel_core
 WORKDIR /usr/src/sentinel_core
