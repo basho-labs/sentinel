@@ -23,23 +23,23 @@ defmodule SentinelCore.Switchboard do
   Init by connecting to the local broker and creating a subscription for swarm events.
   """
   def init(state) do
-      # Populate our view of the local peers by first adding ourself
-      # TODO This results in `:nil` in gateways because we don't set the SENTINEL_DEFAULT_NETWORK env var
-      state = Kernel.update_in(state[:networks][SentinelCore.default_network()], fn _ -> Network.new([SentinelCore.hostname()]) end)
-      # If there was a gateway value set in the ENV, send a message to join the swarm
-      state = case SentinelCore.default_gateway() do
-        nil ->
-          if System.get_env("ORG_ID") != nil do
-            send self(), :connect_to_watson
-          end
-          state
-        gw ->
-          send self(), :join_default_swarm
-          %{state | gateway: String.to_atom(gw)}
+    # Populate our view of the local peers by first adding ourself
+    # TODO This results in `:nil` in gateways because we don't set the SENTINEL_DEFAULT_NETWORK env var
+    state = Kernel.update_in(state[:networks][SentinelCore.default_network()], fn _ -> Network.new([SentinelCore.hostname()]) end)
+    # If there was a gateway value set in the ENV, send a message to join the swarm
+    state = case SentinelCore.default_gateway() do
+      nil ->
+        if System.get_env("ORG_ID") != nil do
+          send self(), :connect_to_watson
+        end
+        state
+      gw ->
+        send self(), :join_default_swarm
+        %{state | gateway: String.to_atom(gw)}
       end
-      Logger.debug "[switchboard] starting with state: #{inspect state}"
-      {:ok, state}
-    end
+    Logger.debug "[switchboard] starting with state: #{inspect state}"
+    {:ok, state}
+  end
 
   @doc """
   Create a client for Watson IoT and connect.
