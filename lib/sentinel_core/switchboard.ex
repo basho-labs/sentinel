@@ -25,7 +25,7 @@ defmodule SentinelCore.Switchboard do
   def init(state) do
     # Populate our view of the local peers by first adding ourself
     # TODO This results in `:nil` in gateways because we don't set the SENTINEL_DEFAULT_NETWORK env var
-    state = Map.put(state, SentinelCore.default_network(), Network.new([SentinelCore.hostname()]))
+    state = Kernel.update_in(state[:networks][SentinelCore.default_network()], fn _ -> Network.new([SentinelCore.hostname()]) end)
     # If there was a gateway value set in the ENV, send a message to join the swarm
     state = case SentinelCore.default_gateway() do
       nil ->
@@ -73,7 +73,9 @@ defmodule SentinelCore.Switchboard do
     Logger.debug "watson_opt: #{inspect watson_opts}"
     Logger.debug "starting watson pinger"
     start_watson_ping(5000)
-    {:noreply, Map.put(state, :watson_opts, Map.merge(watson_opts, new_opts))}
+    state = Kernel.update_in(state[:networks]["watson"], fn _ -> Network.new() end)
+    state = Map.put(state, :watson_opts, Map.merge(watson_opts, new_opts))
+    {:noreply, state}
   end
 
   def handle_info({:ping_watson, after_time}, %{:watson_opts => watson_opts} = state) do
@@ -181,7 +183,11 @@ defmodule SentinelCore.Switchboard do
       {:changed, network} ->
         Logger.debug "[switchboard] changed: #{inspect network}"
         # NB: No ^pin - reassigned 'network'
-        for event <- [:connect_local_peers, :gossip_peers], do: send self(), {event, overlay}
+        Logger.debug "[switchboard] changed: #{inspect network}"
+        case overlay do
+          "watson" -> :ok
+          _ -> for event <- [:connect_local_peers, :gossip_peers], do: send self(), {event, overlay}
+        end
         network
     end
 
@@ -221,7 +227,7 @@ defmodule SentinelCore.Switchboard do
 
   def handle_ping_update(msg_string, state) do
     #msg string should be - delimited string of gateway device_ids
-    cloud_gateways = String.split(msg_string, "-")
+    cloud_gateways = String.split(msg_string, "_")
     #update watson network with cloud gateways
     handle_publish(["swarm", "update", "watson"], {:unknown, cloud_gateways}, state)
   end
