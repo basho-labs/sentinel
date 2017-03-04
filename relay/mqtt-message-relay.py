@@ -24,8 +24,8 @@ def on_log(_mqttc, obj, level, string):
 def on_message(_mqttc, obj, msg):
     topic = ''
     url = msg.topic.split('/')
-    print('URL:')
-    print(url)
+    print('URL: '+str(url))
+    print('MSG: '+str(msg.payload))
     typeId = url[2]
     deviceId = url[4]
     event = url[6]
@@ -39,10 +39,9 @@ def on_message(_mqttc, obj, msg):
             gws.append(deviceId)
             gateways[typeId] = gws
             for gw in gateways[typeId]:
-                if gw != deviceId:
-                    topic = 'iot-2/type/'+typeId+'/id/'+gw+'/cmd/ping_update/fmt/text'#+msg_format
-                    gw_list_msg = "_".join(gateways[typeId])
-                    _mqttc.publish(topic, gw_list_msg)
+                topic = 'iot-2/type/'+typeId+'/id/'+gw+'/cmd/ping_update/fmt/'+msg_format
+                gw_list_msg = "_".join(gateways[typeId])
+                _mqttc.publish(topic, gw_list_msg)
 
     elif event != 'ping' and typeId in gateways.keys() and event in gateways[typeId]:
         topic = 'iot-2/type/'+typeId+'/id/'+event+'/cmd/message/fmt/'+msg_format
