@@ -166,23 +166,26 @@ defmodule SentinelCore.Switchboard do
   @doc """
   Join the node to the named network and immediately try and connect to it.
   """
-  def handle_publish(["swarm", "join", overlay], {_from, peer}, %{:networks => networks} = state) do
+  def handle_publish(["swarm", "join", overlay], msg, %{:networks => networks} = state) do
+    {_from, peer} = :erlang.binary_to_term(msg)
     Logger.debug "[switchboard] joining node #{inspect peer} with #{inspect networks}"
     networks = Map.update(networks, overlay, Network.new([peer]), fn n ->
       Network.add(n, peer)
     end)
     Logger.debug "[switchboard] networks: #{inspect networks}"
 
+    state = %{state | networks: networks}
     for event <- [:connect_local_peers, :gossip_peers], do: send self(), {event, overlay}
 
-    {:noreply, %{state | networks: networks}}
+    {:noreply, state}
   end
 
 
   @doc """
   Update the overlay mesh.
   """
-  def handle_publish(["swarm", "update", overlay], {_from, overlay_peers}, %{:networks => networks} = state) do
+  def handle_publish(["swarm", "update", overlay], msg, %{:networks => networks} = state) do
+    {_from, overlay_peers} = :erlang.binary_to_term(msg)
     network = case Map.get(networks, overlay) do
       nil -> Network.new
       n -> n
