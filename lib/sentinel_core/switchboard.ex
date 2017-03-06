@@ -118,7 +118,7 @@ defmodule SentinelCore.Switchboard do
     end)
     Logger.debug "[switchboard] not connected: #{inspect not_connected}"
     for p <- not_connected, do: PeerSupervisor.connect(p)
-
+    for event <- [:gossip_peers], do: send self(), {event, overlay}
     {:noreply, state}
   end
 
@@ -173,7 +173,7 @@ defmodule SentinelCore.Switchboard do
     end)
     Logger.debug "[switchboard] networks: #{inspect networks}"
 
-    for event <- [:connect_local_peers, :gossip_peers], do: send self(), {event, overlay}
+    for event <- [:connect_local_peers], do: send self(), {event, overlay}
 
     {:noreply, %{state | networks: networks}}
   end
@@ -198,7 +198,7 @@ defmodule SentinelCore.Switchboard do
         # NB: No ^pin - reassigned 'network'
         case overlay do
           "watson" -> :ok
-          _ -> for event <- [:connect_local_peers, :gossip_peers], do: send self(), {event, overlay}
+          _ -> for event <- [:connect_local_peers], do: send self(), {event, overlay}
         end
         network
     end
