@@ -172,10 +172,10 @@ defmodule SentinelCore.Switchboard do
       Network.add(n, peer)
     end)
     Logger.debug "[switchboard] networks: #{inspect networks}"
-
+    state = %{state | networks: networks}
     for event <- [:connect_local_peers], do: send self(), {event, overlay}
 
-    {:noreply, %{state | networks: networks}}
+    {:noreply, state}
   end
 
 
