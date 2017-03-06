@@ -33,7 +33,8 @@ services:
       - DEVICE_TYPE=${DEVICE_TYPE}
       - DEVICE_ID=${DEVICE_ID_A}
       - AUTH_TOKEN=${AUTH_TOKEN_A}
-    hostname: ${DEVICE_ID_A}
+      - SENTINEL_DEFAULT_NETWORK=net-a
+    hostname: "sentinel_gateway_a_1"
     tty: true
 
   gateway_b:
@@ -51,7 +52,8 @@ services:
       - DEVICE_TYPE=${DEVICE_TYPE}
       - DEVICE_ID=${DEVICE_ID_B}
       - AUTH_TOKEN=${AUTH_TOKEN_B}
-    hostname: ${DEVICE_ID_B}
+      - SENTINEL_DEFAULT_NETWORK=net-b
+    hostname: "sentinel_gateway_b_1"
     tty: true
 
   device_a:

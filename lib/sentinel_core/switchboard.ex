@@ -23,23 +23,23 @@ defmodule SentinelCore.Switchboard do
   Init by connecting to the local broker and creating a subscription for swarm events.
   """
   def init(state) do
-    # Populate our view of the local peers by first adding ourself
-    # TODO This results in `:nil` in gateways because we don't set the SENTINEL_DEFAULT_NETWORK env var
-    state = Map.put(state, SentinelCore.default_network(), Network.new([SentinelCore.hostname()]))
-    # If there was a gateway value set in the ENV, send a message to join the swarm
-    state = case SentinelCore.default_gateway() do
-      nil ->
-        if System.get_env("ORG_ID") != nil do
-          send self(), :connect_to_watson
-        end
-        state
-      gw ->
-        send self(), :join_default_swarm
-        %{state | gateway: String.to_atom(gw)}
+      # Populate our view of the local peers by first adding ourself
+      # TODO This results in `:nil` in gateways because we don't set the SENTINEL_DEFAULT_NETWORK env var
+      state = Kernel.update_in(state[:networks][SentinelCore.default_network()], fn _ -> Network.new([SentinelCore.hostname()]) end)
+      # If there was a gateway value set in the ENV, send a message to join the swarm
+      state = case SentinelCore.default_gateway() do
+        nil ->
+          if System.get_env("ORG_ID") != nil do
+            send self(), :connect_to_watson
+          end
+          state
+        gw ->
+          send self(), :join_default_swarm
+          %{state | gateway: String.to_atom(gw)}
+      end
+      Logger.debug "[switchboard] starting with state: #{inspect state}"
+      {:ok, state}
     end
-    Logger.debug "[switchboard] starting with state: #{inspect state}"
-    {:ok, state}
-  end
 
   @doc """
   Create a client for Watson IoT and connect.
@@ -72,17 +72,26 @@ defmodule SentinelCore.Switchboard do
     }
     Logger.debug "watson_opt: #{inspect watson_opts}"
     Logger.debug "starting watson pinger"
-    start_watson_ping(5000)
-    {:noreply, Map.put(state, :watson_opts, Map.merge(watson_opts, new_opts))}
+    after_time = 5000
+    Logger.debug "pinging watson every #{inspect after_time} milliseconds"
+    Process.send_after(self(), {:ping_watson, after_time}, after_time)
+    state = Kernel.update_in(state[:networks]["watson"], fn _ -> Network.new() end)
+    state = Map.put(state, :watson_opts, Map.merge(watson_opts, new_opts))
+    {:noreply, state}
   end
 
-  def handle_info({:ping_watson, after_time}, %{:watson_opts => watson_opts} = state) do
-    Logger.info "pinging watson"
-    %{:watson_client => watson_client, :device_type => device_type, :device_id => device_id} = watson_opts
-    topic = "iot-2/type/"<> device_type <>"/id/"<> device_id <>"/evt/ping/fmt/bin"
-    msg = :erlang.term_to_binary({device_id})
-    :emqttc.publish(watson_client, topic, msg)
-    Process.send_after(self(), {:ping_watson, after_time}, after_time)
+  def handle_info({:ping_watson, after_time}, %{:networks => networks, :watson_opts => watson_opts} = state) do
+    case Map.get(networks, "watson") do
+        nil ->
+          Logger.info "pinging watson"
+          %{:watson_client => watson_client, :device_type => device_type, :device_id => device_id} = watson_opts
+          topic = "iot-2/type/"<> device_type <>"/id/"<> device_id <>"/evt/ping/fmt/txt"
+          msg = device_id
+          :emqttc.publish(watson_client, topic, msg)
+          Process.send_after(self(), {:ping_watson, after_time}, after_time)
+        _ ->
+          :ok
+    end
     {:noreply, state}
   end
 
@@ -136,6 +145,11 @@ defmodule SentinelCore.Switchboard do
     handle_publish(String.split(topic, "/"), message, state)
   end
 
+  def handle_info({:mqttc, client, msg}, state) do
+    Logger.warn "[switchboard] mqttc message from #{inspect client}: #{inspect msg}"
+    {:noreply, state}
+  end
+
   def handle_info(msg, state) do
     Logger.warn "[switchboard] unhandled message: #{inspect msg}"
     {:noreply, state}
@@ -164,6 +178,7 @@ defmodule SentinelCore.Switchboard do
     {:noreply, %{state | networks: networks}}
   end
 
+
   @doc """
   Update the overlay mesh.
   """
@@ -172,16 +187,19 @@ defmodule SentinelCore.Switchboard do
       nil -> Network.new
       n -> n
     end
-    Logger.debug "[switchboard] swarm/update: #{inspect overlay_peers} #{inspect network}"
+    Logger.debug "[switchboard] swarm/update/#{inspect overlay}: #{inspect overlay_peers} #{inspect network}"
 
     network = case Network.update_peers(network, overlay_peers) do
       :no_change ->
-        Logger.debug "[switchboard] no change: #{inspect overlay_peers} vs #{Network.peers(network)}"
+        Logger.debug "[switchboard] #{inspect overlay} no change: #{inspect overlay_peers} vs #{inspect Network.peers(network)}"
         network
       {:changed, network} ->
-        Logger.debug "[switchboard] changed: #{inspect network}"
+        Logger.debug "[switchboard] #{inspect overlay} changed: #{inspect network}"
         # NB: No ^pin - reassigned 'network'
-        for event <- [:connect_local_peers, :gossip_peers], do: send self(), {event, overlay}
+        case overlay do
+          "watson" -> :ok
+          _ -> for event <- [:connect_local_peers, :gossip_peers], do: send self(), {event, overlay}
+        end
         network
     end
 
@@ -199,40 +217,38 @@ defmodule SentinelCore.Switchboard do
   def handle_publish(["iot-2", "type", _device_type, "id", _device_id, "cmd", command_id, "fmt", fmt_string], msg, state) do
     decoded_msg = case fmt_string do
       "bin" -> :erlang.binary_to_term(msg)
-      "text"-> msg
+      "txt"-> msg
       "json"-> msg
       _ -> "Bad datatype"
     end
-
+    Logger.info "Watson command: " <> command_id
+    Logger.info "msg: #{inspect decoded_msg}"
     case command_id do
       "ping_update" -> handle_ping_update(decoded_msg, state)
       _ -> "Bad command"
     end
-
-    Logger.info "Watson command: " <> command_id
-    Logger.info "msg: #{inspect decoded_msg}"
     {:noreply, state}
   end
 
   def handle_publish(topic, message, state) do
-    Logger.warn "[switchboard] unhandled message #{topic} #{inspect message}"
+    Logger.warn "[switchboard] unhandled publish message #{inspect topic} #{inspect message}"
     {:noreply, state}
   end
 
   def handle_ping_update(msg_string, state) do
-    #msg string should be - delimited string of gateway device_ids
-    cloud_gateways = String.split(msg_string, "-")
+    device_id = state.watson_opts.device_id
+    cloud_gateways = List.delete(String.split(msg_string, "_"), device_id)
     #update watson network with cloud gateways
     handle_publish(["swarm", "update", "watson"], {:unknown, cloud_gateways}, state)
   end
 
   defp handle_node_publish(myself, host, msg, state) when myself == host do
-    Logger.warn "[switchboard] unhandled message intended for me (#{myself}): #{inspect msg}"
+    Logger.warn "[switchboard] unhandled message intended for me (#{inspect myself}): #{inspect msg}"
     {:noreply, state}
   end
 
   defp handle_node_publish(myself, host, msg, state) do
-    Logger.warn "[switchboard] unhandled message for peer (#{host}) not intended for me (#{myself}): #{inspect msg}"
+    Logger.warn "[switchboard] unhandled message for peer (#{inspect host}) not intended for me (#{inspect myself}): #{inspect msg}"
     {:noreply, state}
   end
 
@@ -260,11 +276,6 @@ defmodule SentinelCore.Switchboard do
 
     Logger.debug "connected to: #{inspect watson_client}"
     watson_client
-  end
-
-  defp start_watson_ping(after_time) do
-      Logger.debug "pinging watson every #{inspect after_time} milliseconds"
-      Process.send_after(self(), {:ping_watson, after_time}, after_time)
   end
 
 end
