@@ -17,7 +17,7 @@ defmodule SentinelCore.Peer do
       {:host, String.to_charlist(host)},
       {:port, port},
       {:client_id, System.get_env("HOSTNAME")},
-      {:keepalive, 300},
+      {:keepalive, 0},
       {:clean_sess, false}
     ] ++ opts
     Logger.debug "[peer] connection options: #{inspect connect_opts}"
