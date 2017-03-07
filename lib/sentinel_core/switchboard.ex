@@ -45,47 +45,22 @@ defmodule SentinelCore.Switchboard do
   Create a client for Watson IoT and connect.
   """
   def handle_info(:connect_to_watson, state) do
-
-    # Get Watson Creds
-    %{
-      :org_id => org_id, 
-      :device_type => device_type, 
-      :device_id => device_id, 
-      :auth_token => auth_token
-    } = watson_opts = watson_opts()
-
-    client_id = "g:" <> org_id <> ":" <> device_type <> ":" <> device_id
-    host = org_id <> ".messaging.internetofthings.ibmcloud.com"
-    port = "1883"
-    username = "use-token-auth"
-    password = auth_token
-    
-    watson_client = connect_watson(client_id, [host, port, username, password])
-    :emqttc.subscribe(watson_client, "iot-2/type/"<> device_type <> "/id/" <> device_id <> "/cmd/+/fmt/+", :qos1)
-    new_opts = %{
-      client_id: client_id,
-      watson_host: host,
-      watson_port: port,
-      watson_username: username,
-      watson_password: password,
-      watson_client: watson_client
-    }
     Logger.debug "[switchboard] Connecting to Watson"
+    PeerSupervisor.connect_watson("watson")
     after_time = 2000
     Process.send_after(self(), {:ping_watson, after_time}, after_time)
-    state = Map.put(state, :watson_opts, Map.merge(watson_opts, new_opts))
     {:noreply, state}
   end
 
   def handle_info({:ping_watson, after_time}, state) do
-    %{:networks => networks, :watson_opts => watson_opts} = state
+    %{:networks => networks} = state
     case Map.get(networks, "watson") do
         nil ->
           Logger.debug "Pinging Watson"
-          %{:watson_client => watson_client, :device_type => device_type, :device_id => device_id} = watson_opts
-          topic = "iot-2/type/"<> device_type <>"/id/"<> device_id <>"/evt/ping/fmt/txt"
-          msg = device_id
-          :emqttc.publish(watson_client, topic, msg)
+          case Process.whereis(String.to_atom("watson")) do
+            nil -> Logger.debug "Watson client not ready"
+            pid -> send pid, {:ping}
+          end
           Process.send_after(self(), {:ping_watson, after_time}, after_time)
         _watson_gws ->
           :ok
@@ -243,7 +218,7 @@ defmodule SentinelCore.Switchboard do
   end
 
   def handle_ping_update(msg_string, state) do
-    device_id = state.watson_opts.device_id
+    device_id = System.get_env("DEVICE_ID")
     cloud_gateways = List.delete(String.split(msg_string, "_"), device_id)
     handle_publish(["swarm", "update", "watson"], :erlang.term_to_binary({:unknown, cloud_gateways}), state)
   end
@@ -297,8 +272,7 @@ defmodule SentinelCore.Switchboard do
           true -> {"bin", :erlang.term_to_binary({host, :erlang.binary_to_term(msg)})}
           false -> {"bin", :erlang.term_to_binary({host, msg})}
         end
-        topic = "iot-2/type/"<> state.watson_opts.device_type <>"/id/"<> state.watson_opts.device_id <>"/evt/"<> peer <>"/fmt/" <> format
-        :emqttc.publish(state.watson_opts.watson_client, topic, new_msg)
+        send :watson, {:send, peer, format, new_msg}
     _ ->
         Logger.info "[switchboard] Too many Watson peers, don't know what to do"
   end
@@ -309,32 +283,6 @@ defmodule SentinelCore.Switchboard do
   %{:gateway => gateway} = state
   send gateway, {:send, "node/" <> host, msg}
   {:noreply, state}
-  end
-
-  defp watson_opts do
-    org_id = System.get_env("ORG_ID")
-    device_type = System.get_env("DEVICE_TYPE")
-    device_id = System.get_env("DEVICE_ID")
-    auth_token = System.get_env("AUTH_TOKEN")
-    watson_opts = %{org_id: org_id, device_type: device_type, device_id: device_id, auth_token: auth_token}
-    watson_opts
-  end
-
-  defp connect_watson(client_id, [host, port, username, password]) do
-    {:ok, watson_client} = :emqttc.start_link([
-      {:host, String.to_charlist(host)},
-      {:port, String.to_integer(port)},
-      {:client_id, client_id},
-      {:username, username},
-      {:password, password},
-      {:reconnect, {1, 120}},
-      {:keepalive, 0},
-      :auto_resub
-    ])
-    Process.monitor watson_client
-
-    Logger.debug "connected to: #{inspect watson_client}"
-    watson_client
   end
 
 end
