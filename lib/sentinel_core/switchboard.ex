@@ -70,26 +70,24 @@ defmodule SentinelCore.Switchboard do
       watson_password: password,
       watson_client: watson_client
     }
-    Logger.debug "watson_opt: #{inspect watson_opts}"
-    Logger.debug "starting watson pinger"
-    after_time = 5000
-    Logger.debug "pinging watson every #{inspect after_time} milliseconds"
+    Logger.debug "[switchboard] Connecting to Watson"
+    after_time = 2000
     Process.send_after(self(), {:ping_watson, after_time}, after_time)
-    state = Kernel.update_in(state[:networks]["watson"], fn _ -> Network.new() end)
     state = Map.put(state, :watson_opts, Map.merge(watson_opts, new_opts))
     {:noreply, state}
   end
 
-  def handle_info({:ping_watson, after_time}, %{:networks => networks, :watson_opts => watson_opts} = state) do
+  def handle_info({:ping_watson, after_time}, state) do
+    %{:networks => networks, :watson_opts => watson_opts} = state
     case Map.get(networks, "watson") do
         nil ->
-          Logger.info "pinging watson"
+          Logger.debug "Pinging Watson"
           %{:watson_client => watson_client, :device_type => device_type, :device_id => device_id} = watson_opts
           topic = "iot-2/type/"<> device_type <>"/id/"<> device_id <>"/evt/ping/fmt/txt"
           msg = device_id
           :emqttc.publish(watson_client, topic, msg)
           Process.send_after(self(), {:ping_watson, after_time}, after_time)
-        _ ->
+        _watson_gws ->
           :ok
     end
     {:noreply, state}
@@ -173,10 +171,8 @@ defmodule SentinelCore.Switchboard do
       Network.add(n, peer)
     end)
     Logger.debug "[switchboard] networks: #{inspect networks}"
-
     state = %{state | networks: networks}
     for event <- [:connect_local_peers], do: send self(), {event, overlay}
-
     {:noreply, state}
   end
 
@@ -184,29 +180,37 @@ defmodule SentinelCore.Switchboard do
   @doc """
   Update the overlay mesh.
   """
-  def handle_publish(["swarm", "update", overlay], msg, %{:networks => networks} = state) do
+  def handle_publish(["swarm", "update", overlay], msg, state) do
+    %{:networks => networks} = state
     {_from, overlay_peers} = :erlang.binary_to_term(msg)
     network = case Map.get(networks, overlay) do
       nil -> Network.new
       n -> n
     end
+
     Logger.debug "[switchboard] swarm/update/#{inspect overlay}: #{inspect overlay_peers} #{inspect network}"
 
-    network = case Network.update_peers(network, overlay_peers) do
+    {changed, updated_network} = case Network.update_peers(network, overlay_peers) do
       :no_change ->
         Logger.debug "[switchboard] #{inspect overlay} no change: #{inspect overlay_peers} vs #{inspect Network.peers(network)}"
-        network
-      {:changed, network} ->
-        Logger.debug "[switchboard] #{inspect overlay} changed: #{inspect network}"
-        # NB: No ^pin - reassigned 'network'
+        {false, Map.get(networks, overlay)}
+      {:changed, new_network} ->
+        Logger.debug "[switchboard] #{inspect overlay} changed: #{inspect new_network}"
+        {true, new_network}
+    end
+
+    case changed do
+      true ->
+        :ok
+      false ->
         case overlay do
           "watson" -> :ok
           _ -> for event <- [:connect_local_peers], do: send self(), {event, overlay}
         end
-        network
     end
-
-    {:noreply, %{state | networks: Map.put(networks, overlay, network)}}
+    new_networks = Map.put(networks, overlay, updated_network)
+    state = Map.put(state, :networks, new_networks)
+    {:noreply, state}
   end
 
   @doc """
@@ -228,9 +232,9 @@ defmodule SentinelCore.Switchboard do
     Logger.info "msg: #{inspect decoded_msg}"
     case command_id do
       "ping_update" -> handle_ping_update(decoded_msg, state)
-      _ -> "Bad command"
+      "message" -> handle_watson_message(decoded_msg, state)
+      _ -> {:noreply, state}
     end
-    {:noreply, state}
   end
 
   def handle_publish(topic, message, state) do
@@ -241,18 +245,70 @@ defmodule SentinelCore.Switchboard do
   def handle_ping_update(msg_string, state) do
     device_id = state.watson_opts.device_id
     cloud_gateways = List.delete(String.split(msg_string, "_"), device_id)
-    #update watson network with cloud gateways
-    handle_publish(["swarm", "update", "watson"], {:unknown, cloud_gateways}, state)
+    handle_publish(["swarm", "update", "watson"], :erlang.term_to_binary({:unknown, cloud_gateways}), state)
   end
 
+  defp handle_watson_message({target,msg}, state) do
+    topic = "node/"<>target
+    send :localhost, {:send, topic, msg}
+    {:noreply, state}
+  end
+
+  #messages for me
   defp handle_node_publish(myself, host, msg, state) when myself == host do
     Logger.warn "[switchboard] unhandled message intended for me (#{inspect myself}): #{inspect msg}"
     {:noreply, state}
   end
 
+  #message not for me
   defp handle_node_publish(myself, host, msg, state) do
-    Logger.warn "[switchboard] unhandled message for peer (#{inspect host}) not intended for me (#{inspect myself}): #{inspect msg}"
-    {:noreply, state}
+    Logger.warn "[switchboard] message for peer (#{inspect host}): #{inspect msg}"
+    %{:networks => networks} = state
+    local_peers = []
+    local_peers = for {_net_name, net} <- Map.to_list(networks), do: local_peers ++ Network.peers(net)
+    peers = List.flatten(local_peers, [])
+    Logger.info "[switchboard] All local peers: (#{inspect peers})"
+
+    case Enum.member?(peers, host) do
+        true -> Logger.info "[switchboard] peer (#{inspect host}) is local, doing nothing"
+                {:noreply, state}
+        false -> forward_message(myself, host, msg, state)
+    end
+  end
+
+  defp forward_message(myself, host, msg, state) do
+    %{:gateway => gw} = state
+    case gw do
+      nil -> forward_watson(myself, host, msg, state)
+      _any -> forward_gateway(myself, host, msg, state)
+    end
+  end
+
+  #Assumes only one watson peer
+  defp forward_watson(_myself, host, msg, state) do
+  %{:networks => networks} = state
+  watson_network = Map.get(networks, "watson")
+  case Network.peers(watson_network) do
+    [] ->
+        Logger.info "[switchboard] Cannot forward to Watson, no Watson peers"
+    [peer] ->
+        Logger.info "[switchboard] Forward to Watson peer: #{inspect peer}"
+        {format, new_msg} = case is_binary(msg) do
+          true -> {"bin", :erlang.term_to_binary({host, :erlang.binary_to_term(msg)})}
+          false -> {"bin", :erlang.term_to_binary({host, msg})}
+        end
+        topic = "iot-2/type/"<> state.watson_opts.device_type <>"/id/"<> state.watson_opts.device_id <>"/evt/"<> peer <>"/fmt/" <> format
+        :emqttc.publish(state.watson_opts.watson_client, topic, new_msg)
+    _ ->
+        Logger.info "[switchboard] Too many Watson peers, don't know what to do"
+  end
+  {:noreply, state}
+  end
+
+  defp forward_gateway(_myself, host, msg, state) do
+  %{:gateway => gateway} = state
+  send gateway, {:send, "node/" <> host, msg}
+  {:noreply, state}
   end
 
   defp watson_opts do
