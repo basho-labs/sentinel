@@ -22,7 +22,6 @@ def on_log(_mqttc, obj, level, string):
     return
 
 def on_message(_mqttc, obj, msg):
-    topic = ''
     url = msg.topic.split('/')
     print('URL: '+str(url))
     print('MSG: '+str(msg.payload))
@@ -41,7 +40,9 @@ def on_message(_mqttc, obj, msg):
             for gw in gateways[typeId]:
                 topic = 'iot-2/type/'+typeId+'/id/'+gw+'/cmd/ping_update/fmt/'+msg_format
                 gw_list_msg = "_".join(gateways[typeId])
+                print('Sending ping update to: '+str(gw)+' '+gw_list_msg)
                 _mqttc.publish(topic, gw_list_msg)
+
     #if piblished event is a node name, forward to that node's cmd/message topic
     elif event != 'ping' and typeId in gateways.keys() and event in gateways[typeId]:
         topic = 'iot-2/type/'+typeId+'/id/'+event+'/cmd/message/fmt/'+msg_format
@@ -54,10 +55,6 @@ def on_message(_mqttc, obj, msg):
                 _mqttc.publish(topic, msg.payload)
     else:
         print('Unhandled')
-
-    send_url = topic.split('/')
-    print('Send URL:')
-    print(send_url)
     return
 
 api_key = sys.argv[1]
