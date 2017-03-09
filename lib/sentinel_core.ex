@@ -253,7 +253,7 @@ defmodule SentinelCore do
   def ping_update(msg_string, state) do
     device_id = System.get_env("DEVICE_ID")
     cloud_gateways = List.delete(String.split(msg_string, "_"), device_id)
-    msg = :erlang.term_to_binary({:unknown, cloud_gateways})
+    msg = :erlang.term_to_binary({:unknown, {cloud_gateways, state.is_gateway}})
     {:ok, state} = SentinelCore.on_swarm_update(["swarm", "update", "watson"], msg, state)
     {:ok, state}
   end
