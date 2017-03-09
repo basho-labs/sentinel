@@ -11,7 +11,10 @@ defmodule SentinelCore.Switchboard do
   def start_link do
     state = %{
       networks: %{},
-      gateway: nil
+      gateway: nil,
+      gateways: %{},
+      is_gateway: false,
+      paths: %{}
     }
     GenServer.start_link(__MODULE__, state, name: __MODULE__)
   end
@@ -59,8 +62,8 @@ defmodule SentinelCore.Switchboard do
   @doc """
   Send the list of peers around to other nodes I know about to converge the cluster view.
   """
-  def handle_info({:gossip_peers, overlay}, %{:networks => networks} = state) do
-    :ok = SentinelCore.gossip_peers(overlay, networks)
+  def handle_info({:gossip_peers, overlay}, state) do
+    {:ok, state} = SentinelCore.gossip_peers(overlay, state)
     {:noreply, state}
   end
 
@@ -78,6 +81,12 @@ defmodule SentinelCore.Switchboard do
         SentinelCore.on_node_publish(host, msg, state)
       ["iot-2", "type", device_type, "id", device_id, "cmd", command_id, "fmt", fmt_string] ->
         SentinelCore.on_watson_publish(["iot-2", "type", device_type, "id", device_id, "cmd", command_id, "fmt", fmt_string], msg, state)
+      ["send", "message", host] ->
+        SentinelCore.send_message(host, msg, state)
+      ["send", "find", "request", host] ->
+        SentinelCore.find_request(host, msg, state)
+      ["send", "find", "response", host] ->
+        SentinelCore.find_response(host, msg, state)
       _ -> Logger.warn "[switchboard] unhandled message: #{inspect msg}"
            {:ok, state}
     end

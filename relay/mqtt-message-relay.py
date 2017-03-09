@@ -1,6 +1,4 @@
 import paho.mqtt.client as mqtt
-import paho.mqtt.publish as publish
-import paho.mqtt.subscribe as subscribe
 import sys
 
 gateways = dict()
@@ -43,7 +41,6 @@ def on_message(_mqttc, obj, msg):
                 print('Sending ping update to: '+str(gw)+' '+gw_list_msg)
                 _mqttc.publish(topic, gw_list_msg)
 
-    #if piblished event is a node name, forward to that node's cmd/message topic
     elif event != 'ping' and typeId in gateways.keys() and event in gateways[typeId]:
         topic = 'iot-2/type/'+typeId+'/id/'+event+'/cmd/message/fmt/'+msg_format
         _mqttc.publish(topic, msg.payload)

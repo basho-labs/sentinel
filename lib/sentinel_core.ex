@@ -78,12 +78,33 @@ defmodule SentinelCore do
     {:ok, not_connected}
   end
 
-  def gossip_peers(overlay, networks) do
-    {:ok, local_peers} = SentinelCore.get_local_peers(overlay, networks)
+  def gossip_peers(overlay, state) do
+    {:ok, local_peers} = SentinelCore.get_local_peers(overlay, state.networks)
+    {:ok, state} = SentinelCore.become_gateway(state)
     pubopts = [{:qos, 1}, {:retain, true}]
-    msg = {:send, "swarm/update/" <> overlay, local_peers, pubopts}
+    msg = {:send, "swarm/update/" <> overlay, {local_peers, state.is_gateway}, pubopts}
     :ok = SentinelCore.send_msg_all(local_peers, msg)
-    :ok
+    {:ok, state}
+  end
+
+  def become_gateway(state) do
+    was_gw = state.is_gateway
+    {:ok, on_many_networks} = SentinelCore.is_gateway(state.networks)
+    state = %{state | is_gateway: on_many_networks}
+    cond do
+      (was_gw or on_many_networks) and not (was_gw and on_many_networks) ->
+        Logger.debug "is_gateways changed: #{inspect was_gw} -> #{inspect on_many_networks}"
+      true -> :ok
+    end
+    {:ok, state}
+  end
+
+  def is_gateway(networks) do
+    is_gateway = case Map.size(networks) do
+      x when x >= 2 -> true
+      x when x < 2 -> false
+    end
+    {:ok, is_gateway}
   end
 
   def send_msg_all(targets, msg) do
@@ -102,9 +123,13 @@ defmodule SentinelCore do
   """
   def on_swarm_join(["swarm", "join", overlay], msg, state) do
     {_from, peer} = :erlang.binary_to_term(msg)
+
     Logger.debug "[switchboard] joining node #{inspect peer} with #{inspect state.networks}"
+
     {:ok, networks} = SentinelCore.add_to_network(state.networks, overlay, peer)
+
     Logger.debug "[switchboard] networks: #{inspect networks}"
+
     state = %{state | networks: networks}
     send SentinelCore.Switchboard, {:connect_local_peers, overlay}
     {:ok, state}
@@ -122,11 +147,13 @@ defmodule SentinelCore do
   """
   def on_swarm_update(["swarm", "update", overlay], msg, state) do
     %{:networks => networks} = state
-    {_from, overlay_peers} = :erlang.binary_to_term(msg)
+    {from, {overlay_peers, is_gateway}} = :erlang.binary_to_term(msg)
     network = case Map.get(networks, overlay) do
       nil -> Network.new
       n -> n
     end
+
+    {:ok, state} = SentinelCore.update_gateways(from, is_gateway, state)
 
     Logger.debug "[switchboard] swarm/update/#{inspect overlay}: #{inspect overlay_peers} #{inspect network}"
 
@@ -153,26 +180,49 @@ defmodule SentinelCore do
     {:ok, state}
   end
 
-  def message_for_me(msg, state) do
+  def update_gateways(from, is_gateway, state) do
+    gws = state.gateways
+    gws = case is_gateway do
+      true -> Map.put_new(gws, String.to_atom(from), %{})
+      false -> gws
+    end
+    state = %{state | gateways: gws}
+    {:ok, state}
+  end
+
+  def node_message_for_me(msg, state) do
     Logger.warn "[switchboard] unhandled message intended for me (#{inspect SentinelCore.hostname()}): #{inspect msg}"
     {:ok, state}
   end
 
   def on_node_publish(host, msg, state) do
     Logger.warn "[switchboard] message for peer (#{inspect host}): #{inspect msg}"
-    %{:networks => networks} = state
+    {:ok, peers} = SentinelCore.get_all_local_peers(state.networks)
+    Logger.info "[switchboard] All local peers: (#{inspect peers})"
+
+    {:ok, state} = case SentinelCore.node_locality(host, peers) do
+      :me -> SentinelCore.node_message_for_me(msg, state)
+      :local -> Logger.info "[switchboard] peer (#{inspect host}) is local, doing nothing"
+                {:ok, state}
+      :nonlocal -> SentinelCore.forward_message(host, msg, state)
+    end
+    {:ok, state}
+  end
+
+  def get_all_local_peers(networks) do
     local_peers = []
     local_peers = for {_net_name, net} <- Map.to_list(networks), do: local_peers ++ Network.peers(net)
     peers = List.flatten(local_peers, [])
-    Logger.info "[switchboard] All local peers: (#{inspect peers})"
+    {:ok, peers}
+  end
 
-    {:ok, state} = cond do
-      host == SentinelCore.hostname() -> SentinelCore.message_for_me(msg, state)
-      Enum.member?(peers, host) -> Logger.info "[switchboard] peer (#{inspect host}) is local, doing nothing"
-                                   {:ok, state}
-      true -> SentinelCore.forward_message(host, msg, state)
+  def node_locality(host, local_peers) do
+    locality = cond do
+      host == SentinelCore.hostname() -> :me
+      Enum.member?(local_peers, host) -> :local
+      true -> :nonlocal
     end
-    {:ok, state}
+    {:ok, locality}
   end
 
   def on_watson_publish(["iot-2", "type", _device_type, "id", _device_id, "cmd", command_id, "fmt", fmt_string], msg, state) do
@@ -241,6 +291,38 @@ defmodule SentinelCore do
     topic = "node/"<>target
     send :localhost, {:send, topic, msg}
     {:ok, state}
+  end
+
+  def send_message(host, msg, state) do
+    {:ok, peers} = SentinelCore.get_all_local_peers(state.networks)
+    {:ok, state} = case SentinelCore.node_locality(host, peers) do
+      :me -> SentinelCore.recieve_send_message(msg, state)
+      :local -> SentinelCore.forward_send_message_local(host, msg, state)
+      :nonlocal -> SentinelCore.forward_send_message_nonlocal(host, msg, state)
+    end
+    {:ok, state}
+  end
+
+  def recieve_send_message(msg, state) do
+    Logger.warn "[switchboard] unhandled message intended for me (#{inspect SentinelCore.hostname()}): #{inspect msg}"
+    {:ok, state}
+  end
+
+  def forward_send_message_local(host, msg, state) do
+
+  end
+
+  def forward_send_message_nonlocal(host, msg, state) do
+
+  end
+
+  def find_request(host, msg, state) do
+
+  end
+
+  def find_response(host, msg, state) do
+
+
   end
 
 end
