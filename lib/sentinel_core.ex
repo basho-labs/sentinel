@@ -309,7 +309,8 @@ defmodule SentinelCore do
   end
 
   def forward_send_message_local(host, msg, state) do
-
+    send String.to_atom(host), {:send, "send/message"<>host, msg}
+    {:ok, state}
   end
 
   def forward_send_message_nonlocal(host, msg, state) do
