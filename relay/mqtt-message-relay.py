@@ -28,6 +28,11 @@ def on_message(_mqttc, obj, msg):
     event = url[6]
     msg_format = url[8]
 
+    if typeId not in device_types:
+        #print('Unhandled typeId ' + typeId)
+        #print('Available device_types: ' + str(device_types))
+        return
+
     if event == 'ping':
         if typeId not in gateways.keys():
             gateways[typeId] = [deviceId]
@@ -58,6 +63,8 @@ api_key = sys.argv[1]
 auth_token = sys.argv[2]
 org_id = sys.argv[3]
 relay_id = sys.argv[4]
+
+device_types = [relay_id]
 
 client_id = 'a:'+org_id+':'+relay_id
 host = org_id+'.messaging.internetofthings.ibmcloud.com'
