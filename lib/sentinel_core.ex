@@ -8,7 +8,12 @@ defmodule SentinelCore do
   alias SentinelRouter.Network
 
   def hostname do
-    System.get_env("HOSTNAME")
+    case System.get_env("HOSTNAME") do
+        nil ->
+          {:ok, hn} = :inet.gethostname()
+          List.to_string(hn)
+        hn  -> hn
+    end
   end
 
   def default_gateway do
@@ -201,10 +206,11 @@ defmodule SentinelCore do
     Logger.info "[switchboard] All local peers: (#{inspect peers})"
 
     {:ok, state} = case SentinelCore.node_locality(host, peers) do
-      :me -> SentinelCore.node_message_for_me(msg, state)
-      :local -> Logger.info "[switchboard] peer (#{inspect host}) is local, doing nothing"
-                {:ok, state}
-      :nonlocal -> SentinelCore.forward_message(host, msg, state)
+      {:ok, :me} -> SentinelCore.node_message_for_me(msg, state)
+      {:ok, :local} ->
+        Logger.info "[switchboard] peer (#{inspect host}) is local, doing nothing"
+        {:ok, state}
+      {:ok, :nonlocal} -> SentinelCore.forward_message(host, msg, state)
     end
     {:ok, state}
   end
