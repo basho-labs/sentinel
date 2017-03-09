@@ -247,7 +247,7 @@ defmodule SentinelCore do
   def ping_update(msg_string, state) do
     device_id = System.get_env("DEVICE_ID")
     cloud_gateways = List.delete(String.split(msg_string, "_"), device_id)
-    msg = :erlang.term_to_binary({:unknown, cloud_gateways})
+    msg = :erlang.term_to_binary({:unknown, {cloud_gateways, state.is_gateway}})
     {:ok, state} = SentinelCore.on_swarm_update(["swarm", "update", "watson"], msg, state)
     {:ok, state}
   end
@@ -309,12 +309,60 @@ defmodule SentinelCore do
   end
 
   def forward_send_message_local(host, msg, state) do
-    send String.to_atom(host), {:send, "send/message"<>host, msg}
+    send String.to_atom(host), {:send, "send/message/"<>host, msg}
     {:ok, state}
   end
 
   def forward_send_message_nonlocal(host, msg, state) do
+    {:ok, state} = cond do
+      SentinelCore.msg_has_path(msg) -> SentinelCore.send_msg_next_hop(host, msg, state)
+      SentinelCore.has_path_to_target(host, state) -> SentinelCore.get_path_and_send(host, msg, state)
+      true -> SentinelCore.find_path_to_target(host, msg, state)
+    end
+    {:ok, state}
+  end
 
+  def msg_has_path(msg) do
+    has_path = cond do
+      Kernel.is_bitstring(msg) -> false
+      Kernel.is_binary(msg) and
+      Kernel.tuple_size(:erlang.binary_to_term(msg)) == 2 and
+      Kernel.is_list(Kernel.elem(:erlang.binary_to_term(msg), 0)) and
+      Kernel.length(Kernel.elem(:erlang.binary_to_term(msg), 0)) >=1 -> true
+      true -> false
+    end
+    has_path
+  end
+
+  def send_msg_next_hop(host, msg, state) do
+    {path, decoded_msg} = :erlang.binary_to_term(msg)
+    [next_hop | rest_of_path] = path
+    updated_msg = :erlang.term_to_binary({rest_of_path, decoded_msg})
+    send String.to_atom(next_hop), {:send, "send/message/"<>host, updated_msg}
+    {:ok, state}
+  end
+
+  def has_path_to_target(host, state) do
+    has_path = cond do
+      Map.get(state.paths, host) != nil and Kernel.length(Map.get(state.paths, host)) >= 1 -> true
+      true -> false
+    end
+    has_path
+  end
+
+  def get_path_and_send(host, msg, state) do
+    path = Map.get(state.paths, host)
+    [next_hop | rest_of_path] = path
+    updated_msg = :erlang.term_to_binary({rest_of_path, msg})
+    send String.to_atom(next_hop), {:send, "send/message/"<>host, updated_msg}
+    {:ok, state}
+  end
+
+  def find_path_to_target(host, msg, state) do
+    pending = state.pending_msgs
+    host_msgs = Map.get(pending, String.to_atom(host), [])
+    put msg in pending msgs
+    start find path sequence
   end
 
   def find_request(host, msg, state) do

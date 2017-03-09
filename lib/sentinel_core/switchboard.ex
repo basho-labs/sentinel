@@ -14,7 +14,8 @@ defmodule SentinelCore.Switchboard do
       gateway: nil,
       gateways: %{},
       is_gateway: false,
-      paths: %{}
+      paths: %{},
+      pending_msgs: %{}
     }
     GenServer.start_link(__MODULE__, state, name: __MODULE__)
   end
