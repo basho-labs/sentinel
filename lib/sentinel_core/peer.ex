@@ -68,7 +68,7 @@ defmodule SentinelCore.Peer do
     Logger.debug "[peer] MQTT client connected #{inspect client}"
     case name do
       :localhost ->
-        for t <- ["swarm/#", "node/#", "send/#", "subscribe/#"], do: :emqttc.subscribe(client, t, :qos1)
+        for t <- ["swarm/#", "node/#", "send/#", "subscribe/#", "message/#"], do: :emqttc.subscribe(client, t, :qos1)
       _peer ->
         :emqttc.subscribe(client, "node/" <> SentinelCore.hostname(), :qos1)
     end

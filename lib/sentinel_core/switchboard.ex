@@ -86,8 +86,6 @@ defmodule SentinelCore.Switchboard do
         SentinelCore.send_message(host, msg, state)
       ["send", "find", "request", host] ->
         SentinelCore.find_request(host, msg, state)
-      ["send", "find", "response", host] ->
-        SentinelCore.find_response(host, msg, state)
       ["message", host] -> SentinelCore.message(host, msg, state)
       _ -> Logger.warn "[switchboard] unhandled message: #{inspect msg}"
            {:ok, state}
