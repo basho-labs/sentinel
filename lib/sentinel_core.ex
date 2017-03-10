@@ -422,15 +422,23 @@ defmodule SentinelCore do
     end
     paths = Map.put(paths, target, updated_target_paths)
     state = Map.put(state, :paths, paths)
-    {:ok, state} = SentinelCore.update_pending_msgs(target, state)
+    {:ok, state} = SentinelCore.update_paths_and_send_pending(target, state)
     {:ok, state}
   end
 
-  def update_pending_msgs(target, state) do
-
+  def update_paths_and_send_pending(target, state) do
+    pending = Map.get(state, :pending_msgs, %{})
+    target_pending_msgs = Map.get(pending, String.to_atom(target), [])
+    new_pending_msgs = Map.put(pending, String.to_atom(target), [])
+    state = Map.put(state, :pending_msgs, new_pending_msgs)
+    for msg <- target_pending_msgs do
+      {:ok, state} = SentinelCore.message(target, msg, state)
+    end
+    {:ok, state}
   end
 
   def message(host, msg, state) do
+    Logger.debug "[switchboard] sending message to #{host}): #{inspect msg}"
     send :localhost, {:send, "send/message/"<>host, {[], msg}}
     {:ok, state}
   end
