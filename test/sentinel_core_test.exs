@@ -68,7 +68,8 @@ defmodule SentinelCoreTest do
       {:ok, nets} = SentinelCore.add_to_network(nets, net, peer)
       assert 1 == map_size(nets)
       %{ ^net => n } = nets
-      assert [ peer ] == Network.peers(n)
+      # add_to_network/3 auto-adds `hostname` to the network
+      assert Enum.sort([ peer , SentinelCore.hostname() ]) == Enum.sort(Network.peers(n))
     end
   end
 
