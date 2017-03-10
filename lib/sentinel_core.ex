@@ -299,85 +299,140 @@ defmodule SentinelCore do
     {:ok, state}
   end
 
+  # messages either come in from a user as a string or from another node as a binary: {from, {list_of_hops, msg}}
   def send_message(host, msg, state) do
     {:ok, peers} = SentinelCore.get_all_local_peers(state.networks)
     {:ok, state} = case SentinelCore.node_locality(host, peers) do
-      :me -> SentinelCore.recieve_send_message(msg, state)
+      :me -> SentinelCore.recieve_send_message(host, msg, state)
       :local -> SentinelCore.forward_send_message_local(host, msg, state)
       :nonlocal -> SentinelCore.forward_send_message_nonlocal(host, msg, state)
     end
     {:ok, state}
   end
 
-  def recieve_send_message(msg, state) do
-    Logger.warn "[switchboard] unhandled message intended for me (#{inspect SentinelCore.hostname()}): #{inspect msg}"
+  # message is {from, {[], msg}
+  def recieve_send_message(host, msg, state) do
+    {_from ,{[], decoded_msg}} = :erlang.binary_to_term(msg)
+    {:ok, state} = case decoded_msg do
+      {:find_request_repsonse, requested_path} -> SentinelCore.find_request_response(requested_path, state)
+      _ -> Logger.warn "[switchboard] unhandled message intended for me (#{host}): #{inspect msg}"
+           {:ok, state}
+    end
     {:ok, state}
   end
 
+  # message is {from, {[], msg}
   def forward_send_message_local(host, msg, state) do
-    send String.to_atom(host), {:send, "send/message/"<>host, msg}
+    {_from ,{[], decoded_msg}} = :erlang.binary_to_term(msg)
+    send String.to_atom(host), {:send, "send/message/"<>host, {[], decoded_msg}}
     {:ok, state}
   end
 
   def forward_send_message_nonlocal(host, msg, state) do
     {:ok, state} = cond do
       SentinelCore.msg_has_path(msg) -> SentinelCore.send_msg_next_hop(host, msg, state)
-      SentinelCore.has_path_to_target(host, state) -> SentinelCore.get_path_and_send(host, msg, state)
-      true -> SentinelCore.find_path_to_target(host, msg, state)
+      true -> SentinelCore.find_path_to_target_and_send(host, msg, state)
     end
     {:ok, state}
   end
 
   def msg_has_path(msg) do
-    has_path = cond do
-      Kernel.is_bitstring(msg) -> false
-      Kernel.is_binary(msg) and
-      Kernel.tuple_size(:erlang.binary_to_term(msg)) == 2 and
-      Kernel.is_list(Kernel.elem(:erlang.binary_to_term(msg), 0)) and
-      Kernel.length(Kernel.elem(:erlang.binary_to_term(msg), 0)) >=1 -> true
-      true -> false
-    end
+    {_from ,{path, decoded_msg}} = :erlang.binary_to_term(msg)
+    has_path = Kernel.length(path) >= 1
     has_path
   end
 
+  # pop a hop of the front of the path list and send to that hop
   def send_msg_next_hop(host, msg, state) do
-    {path, decoded_msg} = :erlang.binary_to_term(msg)
+    {_from ,{path, decoded_msg}} = :erlang.binary_to_term(msg)
     [next_hop | rest_of_path] = path
-    updated_msg = :erlang.term_to_binary({rest_of_path, decoded_msg})
-    send String.to_atom(next_hop), {:send, "send/message/"<>host, updated_msg}
+    send String.to_atom(next_hop), {:send, "send/message/"<>host, {rest_of_path, decoded_msg}}
     {:ok, state}
   end
 
-  def has_path_to_target(host, state) do
-    has_path = cond do
-      Map.get(state.paths, host) != nil and Kernel.length(Map.get(state.paths, host)) >= 1 -> true
-      true -> false
+ # message will be {from, {[], msg}}
+  def find_path_to_target_and_send(host, msg, state) do
+    paths = Map.get(state, :paths, %{})
+    target_path = Map.get(paths, String.to_atom(host), [])
+    {:ok, state} = cond do
+      target_path != [] -> SentinelCore.get_path_and_send(host, msg, state)
+      target_path == [] -> SentinelCore.queue_msg_and_find_path(host, msg, state)
     end
-    has_path
+    {:ok, state}
+    end
+
+  def queue_msg_and_find_path(host, msg, state) do
+    # store msg in pending msgs
+    {_from ,{[], decoded_msg}} = :erlang.binary_to_term(msg)
+    pending = Map.get(state, :pending_msgs, %{})
+    host_msgs = Map.get(pending, String.to_atom(host), [])
+    pending = Map.put(pending, String.to_atom(host), host_msgs ++ [decoded_msg])
+    state = Map.put(state, :pending_msgs, pending)
+
+    # initiate path find request
+    send :localhost, {:send, "send/find/request/"<>host, []}
+    {:ok, state}
   end
 
   def get_path_and_send(host, msg, state) do
-    path = Map.get(state.paths, host)
-    [next_hop | rest_of_path] = path
-    updated_msg = :erlang.term_to_binary({rest_of_path, msg})
-    send String.to_atom(next_hop), {:send, "send/message/"<>host, updated_msg}
+    target_paths = Map.get(state.paths, String.to_atom(host), [])
+    {first_path, other_paths} = List.pop_at(target_paths, 0)
+    [next_hop | rest_of_path] = first_path
+    {_from ,{[], decoded_msg}} = :erlang.binary_to_term(msg)
+    send String.to_atom(next_hop), {:send, "send/message/"<>host, {rest_of_path, decoded_msg}}
     {:ok, state}
   end
 
-  def find_path_to_target(host, msg, state) do
-    pending = state.pending_msgs
-    host_msgs = Map.get(pending, String.to_atom(host), [])
-    put msg in pending msgs
-    start find path sequence
-  end
-
   def find_request(host, msg, state) do
+    {:ok, state} = cond do
+      host == SentinelCore.hostname() -> SentinelCore.respond_to_find_request(host, msg, state)
+      true -> SentinelCore.forward_find_request(host, msg, state)
+    end
+    {:ok, state}
+  end
+
+  # requested_path will looks like [:requester, :hop1, ... , :hopN, :target]
+  def respond_to_find_request(host, msg, state) do
+    {_from , path} = :erlang.binary_to_term(msg)
+    requested_path = path++[String.to_atom(host)]
+    {requester, gw_hops} = List.pop_at(path, 0)
+    {next_hop, rest_of_path} = List.pop_at(gw_hops, -1)
+    return_path = Enum.reverse(rest_of_path)
+    send next_hop, {:send, "send/message/"<>requester, {return_path, {:find_request_repsonse, requested_path}}}
+  end
+
+  # forward to all local gateways that have not already seen the message
+  def forward_find_request(host, msg, state) do
+    {_from , path} = :erlang.binary_to_term(msg)
+    hostname_atom = String.to_atom(SentinelCore.hostname())
+    for gw <- Map.keys(state.gateways), not Enum.member?(path, gw), do: send gw, {:send, "send/find/request/"<>host, path++[hostname_atom]}
+    {:ok, state}
+  end
+
+  # requested_path will looks like [:requester, :hop1, ... , :hopN, :target]
+  def find_request_response(requested_path, state) do
+    {target, requested_path} = List.pop_at(requested_path, -1)
+    {_requester, requested_path} = List.pop_at(requested_path, 0)
+
+    paths = Map.get(state, :paths, %{})
+    target_paths = Map.get(paths, target, [])
+    update_target_paths = cond do
+      Enum.member?(target_paths, requested_path) -> target_paths
+      not Enum.member?(target_paths, requested_path) -> target_paths++[requested_path]
+    end
+    paths = Map.put(paths, target, updated_target_paths)
+    state = Map.put(state, :paths, paths)
+    {:ok, state} = SentinelCore.update_pending_msgs(target, state)
+    {:ok, state}
+  end
+
+  def update_pending_msgs(target, state) do
 
   end
 
-  def find_response(host, msg, state) do
-
-
+  def message(host, msg, state) do
+    send :localhost, {:send, "send/message/"<>host, {[], msg}}
+    {:ok, state}
   end
 
 end
