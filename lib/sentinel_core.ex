@@ -105,10 +105,7 @@ defmodule SentinelCore do
   end
 
   def is_gateway(networks) do
-    is_gateway = case Map.size(networks) do
-      x when x >= 2 -> true
-      x when x < 2 -> false
-    end
+    is_gateway = Map.size(networks) >= 2
     {:ok, is_gateway}
   end
 
