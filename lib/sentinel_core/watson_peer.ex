@@ -110,7 +110,21 @@ defmodule SentinelCore.WatsonPeer do
 
   def handle_info({:ping}, state) do
     topic = "iot-2/type/"<> state.device_type <>"/id/"<> state.device_id <>"/evt/ping/fmt/txt"
-    :emqttc.publish(state.client, topic, state.device_id)
+    :emqttc.publish(state.client, topic, SentinelCore.hoshostname())
+    {:noreply, state}
+  end
+
+  def handle_info({:find_request, watson_peer, host, path_list}, state) do
+    topic = "iot-2/type/"<> state.device_type <>"/id/"<> state.device_id <>"/evt/"<> watson_peer <>"/fmt/bin"
+    msg = :erlang.term_to_binary({SentinelCore.hostname(), {:find_request, {host, path_list}}})
+    :emqttc.publish(state.client, topic, msg)
+    {:noreply, state}
+  end
+
+  def handle_info({:send_message, watson_peer, host, msg}, state) do
+    topic = "iot-2/type/"<> state.device_type <>"/id/"<> state.device_id <>"/evt/"<> watson_peer <>"/fmt/bin"
+    msg = :erlang.term_to_binary({SentinelCore.hostname(), {:send_message, {host, msg}}})
+    :emqttc.publish(state.client, topic, msg)
     {:noreply, state}
   end
 

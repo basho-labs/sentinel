@@ -241,17 +241,41 @@ defmodule SentinelCore do
     Logger.debug "[core] recieved watson command (#{command_id}) with payload: #{inspect decoded_msg}"
     {:ok, state} = case command_id do
       "ping_update" -> ping_update(decoded_msg, state)
-      "message" -> forward_from_watson(decoded_msg, state)
+      "message" -> on_message_from_watson(decoded_msg, state)
       _ -> {:ok, state}
+    end
+    {:ok, state}
+  end
+
+  def on_message_from_watson(decoded_msg, state) do
+    {_from, {message_type, {host, msg}}} = decoded_msg
+    case message_type do
+      :find_request -> send :localhost, {:send, "send/find/request/"<>host, msg}
+      :send_message -> send :localhost, {:send, "send/message/"<>host, msg}
+      _ -> :ok
     end
     {:ok, state}
   end
 
   def ping_update(msg_string, state) do
     device_id = System.get_env("DEVICE_ID")
-    cloud_gateways = List.delete(String.split(msg_string, "_"), device_id)
-    msg = :erlang.term_to_binary({:unknown, {cloud_gateways, state.is_gateway}})
+    [gws_string, hns_string] = String.split(msg_string, ":")
+    cloud_gateways = List.delete(String.split(gws_string, "_"), device_id)
+    cloud_hostnames = List.delete(String.split(hns_string, "_"), SentinelCore.hostname())
+    {:ok, state} = SentinelCore.update_hostname_map(cloud_gateways, cloud_hostnames, state)
+    msg = :erlang.term_to_binary({:unknown, {cloud_gateways, false}})
     {:ok, state} = SentinelCore.on_swarm_update(["swarm", "update", "watson"], msg, state)
+    {:ok, state}
+  end
+
+  def update_hostname_map(cloud_gateways, cloud_hostnames, state) do
+    hn_map = Map.get(state, :hostname_map, %{})
+    zipped = Enum.zip(cloud_hostnames, cloud_gateways)
+    hn_map = Enum.reduce zipped, hn_map, fn x, acc ->
+      {hn, gw} = x
+      Map.put(acc, hn, gw)
+    end
+    state = Map.put(state, :hostname_map, hn_map)
     {:ok, state}
   end
 
@@ -347,7 +371,10 @@ defmodule SentinelCore do
     {_from ,{path, decoded_msg}} = :erlang.binary_to_term(msg)
     [next_hop | rest_of_path] = path
     Logger.debug "[core] forwarding message for peer (#{host}) to next hop (#{next_hop}) in path (#{inspect path})"
-    send next_hop, {:send, "send/message/"<>host, {rest_of_path, decoded_msg}}
+    case next_hop in Map.keys(state.hostname_map) do
+      true -> send :watson, {:send_message, Map.get(state.hostname_map, next_hop), host, {rest_of_path, decoded_msg}}
+      false -> send next_hop, {:send, "send/message/"<>host, {rest_of_path, decoded_msg}}
+    end
     {:ok, state}
   end
 
@@ -401,11 +428,10 @@ defmodule SentinelCore do
     {_from , path} = :erlang.binary_to_term(msg)
     requested_path = path++[String.to_atom(host)]
     {requester, gw_hops} = List.pop_at(path, 0)
-    {next_hop, rest_of_path} = List.pop_at(gw_hops, -1)
-    return_path = Enum.reverse(rest_of_path)
+    return_path = Enum.reverse(gw_hops)
     Logger.debug "[core] responding to find request for me (#{host})"
     Logger.debug "[core] sending find response back to #{Atom.to_string(requester)} with path: #{inspect requested_path}"
-    send next_hop, {:send, "send/message/"<>Atom.to_string(requester), {return_path, {:find_request_repsonse, requested_path}}}
+    send :localhost, {:send, "send/message/"<>Atom.to_string(requester), {return_path, {:find_request_repsonse, requested_path}}}
     {:ok, state}
   end
 
@@ -413,8 +439,19 @@ defmodule SentinelCore do
   def forward_find_request(host, msg, state) do
     {_from , path} = :erlang.binary_to_term(msg)
     hostname_atom = String.to_atom(SentinelCore.hostname())
-    for gw <- Map.keys(state.gateways), not Enum.member?(path, gw), do: Logger.debug "[core] forwarding find request for #{host} to #{gw}"
-    for gw <- Map.keys(state.gateways), not Enum.member?(path, gw), do: send gw, {:send, "send/find/request/"<>host, path++[hostname_atom]}
+
+    for gw <- Map.keys(state.gateways), not Enum.member?(path, gw) do
+      Logger.debug "[core] forwarding find request for #{host} to #{gw}"
+      send gw, {:send, "send/find/request/"<>host, path++[hostname_atom]}
+    end
+
+    if Map.get(state.networks, "watson") do
+      watson_peers = Network.peers(Map.get(state.networks, "watson"))
+      for watson_peer <- watson_peers, not Enum.member?(path, watson_peer) do
+        Logger.debug "[core] forwarding find request for #{host} to #{watson_peer}"
+        send :watson, {:find_request, watson_peer, host, path++[hostname_atom]}
+      end
+    end
     {:ok, state}
   end
 
@@ -441,20 +478,14 @@ defmodule SentinelCore do
   end
 
   def update_and_send_pending(target, state) do
-    Logger.debug "---------------here1--------------"
     pending = Map.get(state, :pending_msgs, %{})
-    Logger.debug "---------------here2--------------"
     target_pending_msgs = Map.get(pending, target, [])
-    Logger.debug "---------------here3--------------"
     new_pending_msgs = Map.put(pending, target, [])
-    Logger.debug "---------------here4--------------"
     state = Map.put(state, :pending_msgs, new_pending_msgs)
-    Logger.debug "---------------here5--------------"
     cond do
       target_pending_msgs != [] -> Logger.debug "[core] sending all pending messages for #{inspect target}: #{inspect target_pending_msgs}"
-      true -> Logger.debug "---------------here6--------------"
+      true -> :ok
     end
-    Logger.debug "---------------here7--------------"
     for msg <- target_pending_msgs, do: SentinelCore.message(Atom.to_string(target), msg, state)
     {:ok, state}
   end
