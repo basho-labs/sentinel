@@ -105,10 +105,7 @@ defmodule SentinelCore do
   end
 
   def is_gateway(networks) do
-    is_gateway = case Map.size(networks) do
-      x when x >= 2 -> true
-      x when x < 2 -> false
-    end
+    is_gateway = Map.size(networks) >= 2
     {:ok, is_gateway}
   end
 
@@ -221,6 +218,7 @@ defmodule SentinelCore do
     {:ok, peers}
   end
 
+  @spec node_locality(String.t, list(String.t)) :: {:ok, :me | :local | :nonlocal}
   def node_locality(host, local_peers) do
     locality = cond do
       host == SentinelCore.hostname() -> :me
@@ -360,6 +358,7 @@ defmodule SentinelCore do
     {:ok, state}
   end
 
+  @spec msg_has_path(binary) :: boolean
   def msg_has_path(msg) do
     {_from ,{path, _decoded_msg}} = :erlang.binary_to_term(msg)
     has_path = Kernel.length(path) >= 1
