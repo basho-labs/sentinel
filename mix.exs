@@ -34,7 +34,8 @@ defmodule SentinelCore.Mixfile do
       {:distillery, "~> 1.1"},
       {:emqttc, git: "https://github.com/emqtt/emqttc.git", branch: "master"},
       {:socket, "~> 0.3.5"},
-      {:dns, "~> 0.0.4"}
+      {:dns, "~> 0.0.4"},
+      {:lager, ~r/.*/, [env: :prod, git: "https://github.com/basho/lager.git", branch: "master", manager: :rebar3]}
     ]
   end
 end

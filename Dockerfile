@@ -2,7 +2,7 @@ FROM jbrisbin/elixir:ubuntu-16.04
 
 RUN apt-get update
 RUN apt-get install -y erlang-src build-essential-
-RUN apt-get install -y mosquitto
+RUN apt-get install -y mosquitto mosquitto-clients
 
 COPY . /usr/src/sentinel_core
 WORKDIR /usr/src/sentinel_core

@@ -12,6 +12,10 @@ defmodule SentinelCore.PeerSupervisor do
     Supervisor.start_child(__MODULE__, worker(SentinelCore.Peer, [host], id: String.to_atom(host)))
   end
 
+  def connect_watson(host) do
+    Supervisor.start_child(__MODULE__, worker(SentinelCore.WatsonPeer, [host], id: String.to_atom(host)))
+  end
+
   def init([]) do
     children = [
       worker(SentinelCore.Peer, ["localhost"], id: :localhost)

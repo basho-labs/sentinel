@@ -1,6 +1,4 @@
 import paho.mqtt.client as mqtt
-import paho.mqtt.publish as publish
-import paho.mqtt.subscribe as subscribe
 import sys
 
 gateways = dict()
@@ -22,7 +20,6 @@ def on_log(_mqttc, obj, level, string):
     return
 
 def on_message(_mqttc, obj, msg):
-    topic = ''
     url = msg.topic.split('/')
     print('URL: '+str(url))
     print('MSG: '+str(msg.payload))
@@ -31,39 +28,57 @@ def on_message(_mqttc, obj, msg):
     event = url[6]
     msg_format = url[8]
 
-    if event == 'ping':
-        if typeId not in gateways.keys():
-            gateways[typeId] = [deviceId]
-        if typeId in gateways.keys() and deviceId not in gateways[typeId]:
-            gws = gateways[typeId]
-            gws.append(deviceId)
-            gateways[typeId] = gws
-            for gw in gateways[typeId]:
-                topic = 'iot-2/type/'+typeId+'/id/'+gw+'/cmd/ping_update/fmt/'+msg_format
-                gw_list_msg = "_".join(gateways[typeId])
-                _mqttc.publish(topic, gw_list_msg)
+    if typeId not in device_types:
+        #print('Unhandled typeId ' + typeId)
+        #print('Available device_types: ' + str(device_types))
+        return
 
-    elif event != 'ping' and typeId in gateways.keys() and event in gateways[typeId]:
-        topic = 'iot-2/type/'+typeId+'/id/'+event+'/cmd/message/fmt/'+msg_format
-        _mqttc.publish(topic, msg.payload)
+    if event == 'ping':
+        hostname = msg.payload
+        if typeId not in gateways.keys():
+            gateways[typeId] = {deviceId: hostname}
+        if typeId in gateways.keys():
+            if deviceId not in gateways[typeId]:
+                gws = gateways[typeId]
+                gws[deviceId] = hostname
+                gateways[typeId] = gws
+            for gw in gateways[typeId].keys():
+                topic = 'iot-2/type/'+typeId+'/id/'+gw+'/cmd/ping_update/fmt/'+msg_format
+                gw_list_msg = "_".join(gateways[typeId].keys())
+                hn_list_msg = "_".join(gateways[typeId].values())
+                return_msg = gw_list_msg+':'+hn_list_msg
+                print('Sending ping update to: '+str(gw)+' '+return_msg)
+                _mqttc.publish(topic, return_msg)
+                return
+
+    elif event != 'ping' and typeId in gateways.keys() and (event in gateways[typeId].keys() or event in gateways[typeId].values()):
+        if event in gateways[typeId].keys():
+            topic = 'iot-2/type/'+typeId+'/id/'+event+'/cmd/message/fmt/'+msg_format
+            _mqttc.publish(topic, msg.payload)
+            return
+        else:
+            for key in gateways[typeId].keys():
+                if gateways[typeId][key] == event:
+                    topic = 'iot-2/type/'+typeId+'/id/'+key+'/cmd/message/fmt/'+msg_format
+                    _mqttc.publish(topic, msg.payload)
+                    return
 
     elif event != 'ping' and typeId in gateways.keys() and event not in gateways[typeId] and deviceId in gateways[typeId]:
         for gw in gateways[typeId]:
             if gw != deviceId:
                 topic = 'iot-2/type/'+typeId+'/id/'+gw+'/cmd/'+event+'/fmt/'+msg_format
                 _mqttc.publish(topic, msg.payload)
+                return
     else:
         print('Unhandled')
-
-    send_url = topic.split('/')
-    print('Send URL:')
-    print(send_url)
     return
 
 api_key = sys.argv[1]
 auth_token = sys.argv[2]
 org_id = sys.argv[3]
 relay_id = sys.argv[4]
+
+device_types = [relay_id]
 
 client_id = 'a:'+org_id+':'+relay_id
 host = org_id+'.messaging.internetofthings.ibmcloud.com'
