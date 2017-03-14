@@ -63,7 +63,7 @@ defmodule SentinelCore do
 
   def connect_local_peers(networks, overlay) do
     {:ok, local_peers} = SentinelCore.get_local_peers(overlay, networks)
-    {:ok, not_connected} = get_unconnected_peers(local_peers)
+    {:ok, not_connected} = SentinelCore.get_unconnected_peers(local_peers)
     Logger.debug "[core] not connected: #{inspect not_connected}"
     for p <- not_connected, do: PeerSupervisor.connect(p)
     send SentinelCore.Switchboard, {:gossip_peers, overlay}
@@ -125,15 +125,14 @@ defmodule SentinelCore do
   """
   def on_swarm_join(["swarm", "join", overlay], msg, state) do
     {_from, peer} = :erlang.binary_to_term(msg)
-
     Logger.debug "[core] joining node #{inspect peer} with #{inspect state.networks}"
-
     {:ok, networks} = SentinelCore.add_to_network(state.networks, overlay, peer)
-
     Logger.debug "[core] networks: #{inspect networks}"
-
     state = %{state | networks: networks}
     send SentinelCore.Switchboard, {:connect_local_peers, overlay}
+    for an_overlay <- Map.keys(state.networks), an_overlay != "watson" do
+      send SentinelCore.Switchboard, {:connect_local_peers, an_overlay}
+    end
     {:ok, state}
   end
 
@@ -154,11 +153,8 @@ defmodule SentinelCore do
       nil -> Network.new
       n -> n
     end
-
     {:ok, state} = SentinelCore.update_gateways(from, is_gateway, state)
-
     Logger.debug "[core] swarm/update/#{inspect overlay}: #{inspect overlay_peers} #{inspect network}"
-
     {changed, updated_network} = case Network.update_peers(network, overlay_peers) do
       :no_change ->
         Logger.debug "[core] #{inspect overlay} no change: #{inspect overlay_peers} vs #{inspect Network.peers(network)}"
@@ -167,14 +163,12 @@ defmodule SentinelCore do
         Logger.debug "[core] #{inspect overlay} changed: #{inspect new_network}"
         {true, new_network}
     end
-
     case changed do
-      true ->
-        :ok
       false ->
-        case overlay do
-          "watson" -> :ok
-          _ -> send SentinelCore.Switchboard, {:connect_local_peers, overlay}
+        :ok
+      true ->
+        for an_overlay <- Map.keys(state.networks), an_overlay != "watson" do
+          send SentinelCore.Switchboard, {:connect_local_peers, an_overlay}
         end
     end
     new_networks = Map.put(networks, overlay, updated_network)
@@ -258,8 +252,8 @@ defmodule SentinelCore do
   def ping_update(msg_string, state) do
     device_id = System.get_env("DEVICE_ID")
     [gws_string, hns_string] = String.split(msg_string, ":")
-    cloud_gateways = List.delete(String.split(gws_string, "_"), device_id)
-    cloud_hostnames = List.delete(String.split(hns_string, "_"), SentinelCore.hostname())
+    cloud_gateways = List.delete(String.split(gws_string, "&"), device_id)
+    cloud_hostnames = List.delete(String.split(hns_string, "&"), SentinelCore.hostname())
     {:ok, state} = SentinelCore.update_hostname_map(cloud_gateways, cloud_hostnames, state)
     msg = :erlang.term_to_binary({:unknown, {cloud_gateways, false}})
     {:ok, state} = SentinelCore.on_swarm_update(["swarm", "update", "watson"], msg, state)
@@ -268,11 +262,13 @@ defmodule SentinelCore do
 
   def update_hostname_map(cloud_gateways, cloud_hostnames, state) do
     hn_map = Map.get(state, :hostname_map, %{})
+    Logger.debug "[core] updating hostname_map: #{inspect hn_map}"
     zipped = Enum.zip(cloud_hostnames, cloud_gateways)
     hn_map = Enum.reduce zipped, hn_map, fn x, acc ->
       {hn, gw} = x
       Map.put(acc, hn, gw)
     end
+    Logger.debug "[core] updated hostname_map: #{inspect hn_map}"
     state = Map.put(state, :hostname_map, hn_map)
     {:ok, state}
   end
@@ -344,15 +340,18 @@ defmodule SentinelCore do
   # message is {from, {[], msg}
   def forward_send_message_local(host, msg, state) do
     {_from ,{[], decoded_msg}} = :erlang.binary_to_term(msg)
-    Logger.debug "[core] forwarding message to local peer #{host}): #{inspect decoded_msg}"
+    Logger.debug "[core] forwarding message to local peer (#{host}): #{inspect decoded_msg}"
     send String.to_atom(host), {:send, "send/message/"<>host, {[], decoded_msg}}
     {:ok, state}
   end
 
   def forward_send_message_nonlocal(host, msg, state) do
-    Logger.debug "[core] forwarding message to non-local peer #{host}): #{inspect msg}"
+    {_from ,{path, decoded_msg}} = :erlang.binary_to_term(msg)
+    Logger.debug "[core] forwarding message to non-local peer (#{host}): #{inspect :erlang.binary_to_term(msg)}"
     {:ok, state} = cond do
       SentinelCore.msg_has_path(msg) -> SentinelCore.send_msg_next_hop(host, msg, state)
+      host in Map.keys(state.hostname_map) -> send :watson, {:send_message, Map.get(state.hostname_map, host), host, {path, decoded_msg}}
+                                              {:ok, state}
       true -> SentinelCore.find_path_to_target_and_send(host, msg, state)
     end
     {:ok, state}
@@ -370,8 +369,8 @@ defmodule SentinelCore do
     {_from ,{path, decoded_msg}} = :erlang.binary_to_term(msg)
     [next_hop | rest_of_path] = path
     Logger.debug "[core] forwarding message for peer (#{host}) to next hop (#{next_hop}) in path (#{inspect path})"
-    case next_hop in Map.keys(state.hostname_map) do
-      true -> send :watson, {:send_message, Map.get(state.hostname_map, next_hop), host, {rest_of_path, decoded_msg}}
+    case Atom.to_string(next_hop) in Map.keys(state.hostname_map) do
+      true -> send :watson, {:send_message, Map.get(state.hostname_map, Atom.to_string(next_hop)), host, {rest_of_path, decoded_msg}}
       false -> send next_hop, {:send, "send/message/"<>host, {rest_of_path, decoded_msg}}
     end
     {:ok, state}
@@ -436,19 +435,41 @@ defmodule SentinelCore do
 
   # forward to all local gateways that have not already seen the message
   def forward_find_request(host, msg, state) do
+    {:ok, peers} = SentinelCore.get_all_local_peers(state.networks)
+    {:ok, state} = case SentinelCore.node_locality(host, peers) do
+      {:ok, :me} -> Logger.debug "[core] error: find request for me (#{host})"
+      {:ok, :local} -> SentinelCore.forward_find_request_local(host, msg, state)
+      {:ok, :nonlocal} -> SentinelCore.forward_find_request_nonlocal(host, msg, state)
+    end
+    {:ok, state}
+  end
+
+  def forward_find_request_local(host, msg, state) do
     {_from , path} = :erlang.binary_to_term(msg)
     hostname_atom = String.to_atom(SentinelCore.hostname())
+    Logger.debug "[core] local: forwarding find request for #{host} to #{host}"
+    send Process.whereis(String.to_atom(host)), {:send, "send/find/request/"<>host, path++[hostname_atom]}
+    {:ok, state}
+  end
 
+  def forward_find_request_nonlocal(host, msg, state) do
+    {_from , path} = :erlang.binary_to_term(msg)
+    hostname_atom = String.to_atom(SentinelCore.hostname())
+    Logger.debug "[core] gateways: #{inspect Map.keys(state.gateways)}"
     for gw <- Map.keys(state.gateways), not Enum.member?(path, gw) do
-      Logger.debug "[core] forwarding find request for #{host} to #{gw}"
+      Logger.debug "[core] nonlocal: forwarding find request for #{host} to #{gw}"
       send gw, {:send, "send/find/request/"<>host, path++[hostname_atom]}
     end
 
     if Map.get(state.networks, "watson") do
       watson_peers = Network.peers(Map.get(state.networks, "watson"))
-      for watson_peer <- watson_peers, not Enum.member?(path, watson_peer) do
-        Logger.debug "[core] forwarding find request for #{host} to #{watson_peer}"
-        send :watson, {:find_request, watson_peer, host, path++[hostname_atom]}
+      for watson_peer <- watson_peers do
+        [default | _rest] = path
+        {hn_of_peer, _peer} = Enum.find(state.hostname_map, default, fn{_k, v} -> v == watson_peer end)
+        if not Enum.member?(path, String.to_atom(hn_of_peer)) do
+          Logger.debug "[core] nonlocal: forwarding find request for #{host} to #{watson_peer}"
+          send :watson, {:find_request, watson_peer, host, path++[hostname_atom]}
+        end
       end
     end
     {:ok, state}

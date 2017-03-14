@@ -110,7 +110,7 @@ defmodule SentinelCore.WatsonPeer do
 
   def handle_info({:ping}, state) do
     topic = "iot-2/type/"<> state.device_type <>"/id/"<> state.device_id <>"/evt/ping/fmt/txt"
-    :emqttc.publish(state.client, topic, SentinelCore.hoshostname())
+    :emqttc.publish(state.client, topic, SentinelCore.hostname())
     {:noreply, state}
   end
 
