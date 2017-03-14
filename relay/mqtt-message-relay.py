@@ -34,7 +34,7 @@ def on_message(_mqttc, obj, msg):
         return
 
     if event == 'ping':
-        hostname = msg.payload
+        hostname = msg.payload.decode("utf-8")
         if typeId not in gateways.keys():
             gateways[typeId] = {deviceId: hostname}
         if typeId in gateways.keys():
@@ -42,14 +42,15 @@ def on_message(_mqttc, obj, msg):
                 gws = gateways[typeId]
                 gws[deviceId] = hostname
                 gateways[typeId] = gws
-            for gw in gateways[typeId].keys():
+            print(list(gateways[typeId].keys()))
+            for gw in list(gateways[typeId].keys()):
                 topic = 'iot-2/type/'+typeId+'/id/'+gw+'/cmd/ping_update/fmt/'+msg_format
-                gw_list_msg = "_".join(gateways[typeId].keys())
-                hn_list_msg = "_".join(gateways[typeId].values())
+                gw_list_msg = "&".join(gateways[typeId].keys())
+                hn_list_msg = "&".join(gateways[typeId].values())
                 return_msg = gw_list_msg+':'+hn_list_msg
                 print('Sending ping update to: '+str(gw)+' '+return_msg)
                 _mqttc.publish(topic, return_msg)
-                return
+            return
 
     elif event != 'ping' and typeId in gateways.keys() and (event in gateways[typeId].keys() or event in gateways[typeId].values()):
         if event in gateways[typeId].keys():
@@ -61,14 +62,14 @@ def on_message(_mqttc, obj, msg):
                 if gateways[typeId][key] == event:
                     topic = 'iot-2/type/'+typeId+'/id/'+key+'/cmd/message/fmt/'+msg_format
                     _mqttc.publish(topic, msg.payload)
-                    return
+            return
 
     elif event != 'ping' and typeId in gateways.keys() and event not in gateways[typeId] and deviceId in gateways[typeId]:
         for gw in gateways[typeId]:
             if gw != deviceId:
                 topic = 'iot-2/type/'+typeId+'/id/'+gw+'/cmd/'+event+'/fmt/'+msg_format
                 _mqttc.publish(topic, msg.payload)
-                return
+        return
     else:
         print('Unhandled')
     return
@@ -79,8 +80,8 @@ org_id = sys.argv[3]
 relay_id = sys.argv[4]
 
 device_types = [relay_id]
-
-client_id = 'a:'+org_id+':'+relay_id
+#client_id = 'a:'+org_id+':'+relay_id
+client_id = 'a:'+org_id+':12345'
 host = org_id+'.messaging.internetofthings.ibmcloud.com'
 
 
