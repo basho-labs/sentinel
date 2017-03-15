@@ -1,0 +1,261 @@
+version: '2'
+
+services:
+  cloud_relay:
+    build: ./relay
+    image: cloud_relay
+    labels:
+      - "swarm=dev"
+      - "role=relay"
+    ports:
+      - 1883
+    environment:
+      - ORG_ID
+      - RELAY_API_KEY
+      - RELAY_ID
+      - RELAY_AUTH_TOKEN
+    tty: true
+
+  test_runner:
+    build: ./test_runner
+    image: test_runner
+    labels:
+      - "swarm=dev"
+      - "role=test_runner"
+    ports:
+      - 1883
+    networks:
+      - net-a1
+      - net-a2
+      - net-a3
+      - net-b1
+      - net-b2
+      - net-b3
+    environment:
+      - MSG_SOURCE
+      - MSG_SINK
+    tty: true
+
+  gateway_a:
+    build: .
+    image: sentinel
+    labels:
+      - "swarm=dev"
+      - "role=gateway"
+    ports:
+      - 1883
+    networks:
+      - net-a1
+    environment:
+      - ORG_ID
+      - DEVICE_TYPE=${DEVICE_TYPE}
+      - DEVICE_ID=${DEVICE_ID_A}
+      - AUTH_TOKEN=${AUTH_TOKEN_A}
+      - SENTINEL_DEFAULT_NETWORK=net-a1
+    hostname: "sentinel_gateway_a_1"
+    tty: true
+
+  gateway_b:
+    build: .
+    image: sentinel
+    labels:
+      - "swarm=dev"
+      - "role=gateway"
+    ports:
+      - 1883
+    networks:
+      - net-b1
+    environment:
+      - ORG_ID
+      - DEVICE_TYPE=${DEVICE_TYPE}
+      - DEVICE_ID=${DEVICE_ID_B}
+      - AUTH_TOKEN=${AUTH_TOKEN_B}
+      - SENTINEL_DEFAULT_NETWORK=net-b1
+    hostname: "sentinel_gateway_b_1"
+    tty: true
+
+  device_a0:
+    build: .
+    image: sentinel
+    labels:
+      - "swarm=dev"
+      - "role=device"
+    ports:
+      - 1883
+    networks:
+      - net-a1
+    environment:
+      - SENTINEL_DEFAULT_GATEWAY=sentinel_gateway_a_1
+      - SENTINEL_DEFAULT_NETWORK=net-a1
+    hostname: "sentinel_device_a0_1"
+    depends_on:
+      - gateway_a
+    tty: true
+
+  device_a1:
+    build: .
+    image: sentinel
+    labels:
+      - "swarm=dev"
+      - "role=device"
+    ports:
+      - 1883
+    networks:
+      - net-a1
+      - net-a2
+    environment:
+      - SENTINEL_DEFAULT_GATEWAY=sentinel_gateway_a_1
+      - SENTINEL_DEFAULT_NETWORK=net-a1
+    hostname: "sentinel_device_a1_1"
+    depends_on:
+      - gateway_a
+    tty: true
+
+  device_a2:
+    build: .
+    image: sentinel
+    labels:
+      - "swarm=dev"
+      - "role=device"
+    ports:
+      - 1883
+    networks:
+      - net-a2
+      - net-a3
+    environment:
+      - SENTINEL_DEFAULT_GATEWAY=sentinel_device_a1_1
+      - SENTINEL_DEFAULT_NETWORK=net-a2
+    hostname: "sentinel_device_a2_1"
+    depends_on:
+      - device_a1
+    tty: true
+
+  device_a3:
+    build: .
+    image: sentinel
+    labels:
+      - "swarm=dev"
+      - "role=device"
+    ports:
+      - 1883
+    networks:
+      - net-a3
+    environment:
+      - SENTINEL_DEFAULT_GATEWAY=sentinel_device_a2_1
+      - SENTINEL_DEFAULT_NETWORK=net-a3
+    hostname: "sentinel_device_a3_1"
+    depends_on:
+      - device_a2
+    tty: true
+
+  device_b0:
+    build: .
+    image: sentinel
+    labels:
+      - "swarm=dev"
+      - "role=device"
+    ports:
+      - 1883
+    networks:
+      - net-b1
+    environment:
+      - SENTINEL_DEFAULT_GATEWAY=sentinel_gateway_b_1
+      - SENTINEL_DEFAULT_NETWORK=net-b1
+    hostname: "sentinel_device_b0_1"
+    depends_on:
+      - gateway_b
+    tty: true
+
+  device_b1:
+    build: .
+    image: sentinel
+    labels:
+      - "swarm=dev"
+      - "role=device"
+    ports:
+      - 1883
+    networks:
+      - net-b1
+      - net-b2
+    environment:
+      - SENTINEL_DEFAULT_GATEWAY=sentinel_gateway_b_1
+      - SENTINEL_DEFAULT_NETWORK=net-b1
+    hostname: "sentinel_device_b1_1"
+    depends_on:
+      - gateway_b
+    tty: true
+
+  device_b2:
+    build: .
+    image: sentinel
+    labels:
+      - "swarm=dev"
+      - "role=device"
+    ports:
+      - 1883
+    networks:
+      - net-b2
+      - net-b3
+    environment:
+      - SENTINEL_DEFAULT_GATEWAY=sentinel_device_b1_1
+      - SENTINEL_DEFAULT_NETWORK=net-b2
+    hostname: "sentinel_device_b2_1"
+    depends_on:
+      - device_b1
+    tty: true
+
+  device_b3:
+    build: .
+    image: sentinel
+    labels:
+      - "swarm=dev"
+      - "role=device"
+    ports:
+      - 1883
+    networks:
+      - net-b3
+    environment:
+      - SENTINEL_DEFAULT_GATEWAY=sentinel_device_b2_1
+      - SENTINEL_DEFAULT_NETWORK=net-b3
+    hostname: "sentinel_device_b3_1"
+    depends_on:
+      - device_b2
+    tty: true
+
+networks:
+  net-a1:
+    driver: bridge
+    ipam:
+      driver: default
+      config:
+      - subnet: 10.1.1.0/24
+  net-a2:
+    driver: bridge
+    ipam:
+      driver: default
+      config:
+      - subnet: 10.1.2.0/24
+  net-a3:
+    driver: bridge
+    ipam:
+      driver: default
+      config:
+      - subnet: 10.1.3.0/24
+  net-b1:
+    driver: bridge
+    ipam:
+      driver: default
+      config:
+      - subnet: 10.2.1.0/24
+  net-b2:
+    driver: bridge
+    ipam:
+      driver: default
+      config:
+      - subnet: 10.2.2.0/24
+  net-b3:
+    driver: bridge
+    ipam:
+      driver: default
+      config:
+      - subnet: 10.2.3.0/24
