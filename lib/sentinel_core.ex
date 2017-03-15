@@ -39,28 +39,6 @@ defmodule SentinelCore do
     {:ok, state}
   end
 
-  def connect_and_start_pinging_watson(after_time, state) do
-    PeerSupervisor.connect_watson("watson")
-    %{:networks => networks} = state
-    :ok = SentinelCore.ping_watson(after_time, networks)
-    {:ok, state}
-  end
-
-  def ping_watson(after_time, networks) do
-    case Map.get(networks, "watson") do
-      nil ->
-        Logger.debug "[core] pinging watson"
-        case Process.whereis(String.to_atom("watson")) do
-          nil -> Logger.debug "[core] watson client not ready"
-          pid -> send pid, {:ping}
-        end
-        Process.send_after(SentinelCore.Switchboard, {:ping_watson, after_time}, after_time)
-      _watson_gws ->
-        :ok
-    end
-    :ok
-  end
-
   def connect_local_peers(networks, overlay) do
     {:ok, local_peers} = SentinelCore.get_local_peers(overlay, networks)
     {:ok, not_connected} = SentinelCore.get_unconnected_peers(local_peers)

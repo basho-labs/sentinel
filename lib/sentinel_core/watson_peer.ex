@@ -46,6 +46,8 @@ defmodule SentinelCore.WatsonPeer do
       device_id: device_id,
       auth_token: auth_token,
       options: connect_opts,
+      ## TODO Pass this in as an arg?
+      ping_period: 5000,
       metadata: %{}
     }}
   end
@@ -84,6 +86,7 @@ defmodule SentinelCore.WatsonPeer do
     %{:device_type => device_type, :device_id => device_id} = state
     Logger.debug "[watson peer] MQTT client connected #{inspect watson_client}"
     :emqttc.subscribe(watson_client, "iot-2/type/"<> device_type <> "/id/" <> device_id <> "/cmd/+/fmt/+", :qos1)
+    send state.name, {:ping, state.ping_period}
     {:noreply, state}
   end
 
@@ -108,7 +111,8 @@ defmodule SentinelCore.WatsonPeer do
     {:noreply, state}
   end
 
-  def handle_info({:ping}, state) do
+  def handle_info({:ping, after_time}, state) do
+    Logger.debug "[watson peer] pinging watson"
     topic = "iot-2/type/"<> state.device_type <>"/id/"<> state.device_id <>"/evt/ping/fmt/txt"
     :emqttc.publish(state.client, topic, SentinelCore.hostname())
     {:noreply, state}

@@ -36,12 +36,7 @@ defmodule SentinelCore.Switchboard do
   """
   def handle_info(:connect_to_watson, state) do
     Logger.debug "[switchboard] Connecting to Watson"
-    {:ok, _} = SentinelCore.connect_and_start_pinging_watson(5000, state)
-    {:noreply, state}
-  end
-
-  def handle_info({:ping_watson, after_time}, state) do
-    {:ok, _} = SentinelCore.ping_watson(after_time, state)
+    {:ok, _} = SentinelCore.PeerSupervisor.connect_watson("watson")
     {:noreply, state}
   end
 
