@@ -18,6 +18,7 @@ defmodule SentinelCore.Peer do
       {:port, port},
       {:client_id, System.get_env("HOSTNAME")},
       {:keepalive, 0},
+      {:logger, {:console, :info}},
       {:clean_sess, false}
     ] ++ opts
     Logger.debug "[peer] connection options: #{inspect connect_opts}"

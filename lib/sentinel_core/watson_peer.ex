@@ -25,6 +25,7 @@ defmodule SentinelCore.WatsonPeer do
                    {:client_id, client_id},
                    {:username, username},
                    {:password, password},
+                   {:logger, {:console, :info}},
                    {:reconnect, {1, 120}},
                    {:keepalive, 0},
                     :auto_resub
