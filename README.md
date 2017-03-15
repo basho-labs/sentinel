@@ -38,7 +38,7 @@ Then run `docker-compose down && docker-compose build && docker-compose up -d`
 
 The e2e tests is very rudimentary and works by listening to a source topic and
 a sink topic for messages. The test will send a message by publishing a string
-to `message/$msg_sink` on `the `$msg_source` node and then listen to topic
+to `message/$msg_sink` on the `$msg_source` node and then listen to topic
 `send/message/$msg_sink` on the `$msg_sink` node. To run:
 
 ```
