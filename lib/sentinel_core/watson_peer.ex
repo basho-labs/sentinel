@@ -75,7 +75,6 @@ defmodule SentinelCore.WatsonPeer do
 
   def handle_info({:connect, connect_opts}, state) do
     {:ok, watson_client} = :emqttc.start_link(connect_opts)
-    Process.link watson_client
     Logger.debug "[watson peer] connected to: #{inspect watson_client}"
     {:noreply, Map.put(state, :client, watson_client)}
   end
