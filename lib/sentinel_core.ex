@@ -230,7 +230,7 @@ defmodule SentinelCore do
       "json"-> msg
       _ -> "Bad datatype"
     end
-    Logger.debug "[core] recieved watson command (#{command_id}) with payload: #{inspect decoded_msg}"
+    Logger.debug "[core] received watson command (#{command_id}) with payload: #{inspect decoded_msg}"
     {:ok, state} = case command_id do
       "ping_update" -> ping_update(decoded_msg, state)
       "message" -> on_message_from_watson(decoded_msg, state)
@@ -328,7 +328,7 @@ defmodule SentinelCore do
   # message is {from, {[], msg}
   def recieve_send_message(host, msg, state) do
     {_from ,{[], decoded_msg}} = :erlang.binary_to_term(msg)
-    Logger.debug "[core] message recieved for me (#{host}): #{inspect decoded_msg}"
+    Logger.debug "[core] message received for me (#{host}): #{inspect decoded_msg}"
     {:ok, state} = case decoded_msg do
       {:find_request_repsonse, requested_path} -> SentinelCore.find_request_response(requested_path, state)
       _ -> Logger.warn "[core] unhandled message intended for me (#{host}): #{inspect msg}"
@@ -413,7 +413,7 @@ defmodule SentinelCore do
   end
 
   def find_request(host, msg, state) do
-    Logger.debug "[core] recieved find request for #{host}"
+    Logger.debug "[core] received find request for #{host}"
     {:ok, state} = cond do
       host == SentinelCore.hostname() -> SentinelCore.respond_to_find_request(host, msg, state)
       true -> SentinelCore.forward_find_request(host, msg, state)
@@ -479,7 +479,7 @@ defmodule SentinelCore do
   def find_request_response(requested_path, state) do
     {target, requested_path} = List.pop_at(requested_path, -1)
     {_requester, requested_path} = List.pop_at(requested_path, 0)
-    Logger.debug "[core] recieved response to find request for #{target}"
+    Logger.debug "[core] received response to find request for #{target}"
     paths = Map.get(state, :paths, %{})
     target_paths = Map.get(paths, target, [])
     updated_target_paths = cond do
