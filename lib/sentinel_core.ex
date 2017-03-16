@@ -262,23 +262,23 @@ defmodule SentinelCore do
 
   #Assumes only one watson peer
   def forward_to_watson(host, msg, state) do
-  %{:networks => networks} = state
-  ## TODO This can return 'nil' when "watson" isn't set up yet
-  watson_network = Map.get(networks, "watson")
-  case Network.peers(watson_network) do
-    [] ->
-        Logger.debug "[core] cannot forward to watson, no watson peers"
-    [peer] ->
-        Logger.debug "[core] forward to watson peer: #{inspect peer}"
-        {format, new_msg} = case is_binary(msg) do
-          true -> {"bin", :erlang.term_to_binary({host, :erlang.binary_to_term(msg)})}
-          false -> {"bin", :erlang.term_to_binary({host, msg})}
-        end
-        send :watson, {:send, peer, format, new_msg}
-    _ ->
-        Logger.debug "[core] too many watson peers, don't know what to do"
-  end
-  {:ok, state}
+    %{:networks => networks} = state
+    ## TODO This can return 'nil' when "watson" isn't set up yet
+    watson_network = Map.get(networks, "watson")
+    case Network.peers(watson_network) do
+      [] ->
+          Logger.debug "[core] cannot forward to watson, no watson peers"
+      [peer] ->
+          Logger.debug "[core] forward to watson peer: #{inspect peer}"
+          {format, new_msg} = case is_binary(msg) do
+            true -> {"bin", :erlang.term_to_binary({host, :erlang.binary_to_term(msg)})}
+            false -> {"bin", :erlang.term_to_binary({host, msg})}
+          end
+          send :watson, {:send, peer, format, new_msg}
+      _ ->
+          Logger.debug "[core] too many watson peers, don't know what to do"
+    end
+    {:ok, state}
   end
 
   def forward_to_gateway(host, msg, state) do
