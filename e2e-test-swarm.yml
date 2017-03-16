@@ -31,9 +31,6 @@ services:
       - net-b1
       - net-b2
       - net-b3
-    environment:
-      - MSG_SOURCE
-      - MSG_SINK
     tty: true
 
   gateway_a:

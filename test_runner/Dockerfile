@@ -18,11 +18,11 @@ RUN apt-get update
 RUN apt-get install -y docker-engine
 
 RUN pip install --upgrade pip
-RUN pip install pytest paho-mqtt
+RUN pip install pytest paho-mqtt pytest-timeout
 
 COPY start.sh /start.sh
 RUN chmod a+x /start.sh
-COPY e2e_tester.py /e2e_tester.py
-RUN chmod a+x /e2e_tester.py
+COPY tester.py /tester.py
+RUN chmod a+x /tester.py
 
-ENTRYPOINT /start.sh $MSG_SOURCE $MSG_SINK
+ENTRYPOINT /start.sh
