@@ -263,6 +263,7 @@ defmodule SentinelCore do
   #Assumes only one watson peer
   def forward_to_watson(host, msg, state) do
   %{:networks => networks} = state
+  ## TODO This can return 'nil' when "watson" isn't set up yet
   watson_network = Map.get(networks, "watson")
   case Network.peers(watson_network) do
     [] ->
