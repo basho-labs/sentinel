@@ -42,10 +42,6 @@ to `message/$msg_sink` on the `$msg_source` node and then listen to topic
 `send/message/$msg_sink` on the `$msg_sink` node. To run:
 
 ```
-# Choose source and sink nodes
-export MSG_SOURCE="sentinel_device_a3_1"
-export MSG_SINK="sentinel_device_a2_1"
-
 # Build the test runner and target swarm
 docker-compose -f e2e-test-swarm.yml build
 
