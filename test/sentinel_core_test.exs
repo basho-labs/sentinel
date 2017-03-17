@@ -73,4 +73,13 @@ defmodule SentinelCoreTest do
     end
   end
 
+  test "SentinelCore.send_msg_all/2 skips own hostname" do
+    ptest locals: peers(), remotes: peers() do
+      me = SentinelCore.hostname()
+      assert {:ok, :me} == SentinelCore.node_locality(me, locals)
+      assert {:ok, :local} == SentinelCore.node_locality(hd(locals), locals)
+      assert {:ok, :nonlocal} == SentinelCore.node_locality(hd(remotes), locals)
+    end
+  end
+
 end
